@@ -277,6 +277,37 @@
   }
 }
 
+/* Difuminado del hero: ESTATICO (sin movimiento, sin parpadeo) */
+@utility hero-aurora {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--background);
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(60% 55% at 18% 6%, rgba(153, 184, 152, 0.42), transparent 60%),
+      radial-gradient(55% 50% at 88% 2%, rgba(255, 132, 124, 0.3), transparent 62%),
+      radial-gradient(66% 55% at 62% 110%, rgba(254, 206, 168, 0.34), transparent 60%);
+  }
+}
+
+/* Barra de carga 0 -> 100 para botones (en vez del circulo girando) */
+@keyframes loadfill {
+  0% {
+    transform: scaleX(0);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
 
 
 @layer base {
