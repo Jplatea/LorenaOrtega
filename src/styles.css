@@ -87,45 +87,45 @@
 
 :root {
   --radius: 0.75rem;
-  /* Palette: Ivory #E1DAD3, Nude #E4C9B6, Dusty Rose #D7A49A, Sage #A9B89A, Baby Blue #A4B1BA */
-  --background: oklch(0.96 0.008 70);
-  --surface: oklch(0.93 0.015 60);
-  --foreground: oklch(0.28 0.02 25);
-  --card: oklch(0.985 0.005 70);
-  --card-foreground: oklch(0.28 0.02 25);
-  --popover: oklch(0.985 0.005 70);
-  --popover-foreground: oklch(0.28 0.02 25);
-  --primary: oklch(0.7627 0.0449 129.2);
-  --primary-foreground: oklch(0.22 0.03 130);
-  --primary-soft: oklch(0.9 0.03 130);
-  --secondary: oklch(0.87 0.02 60);
-  --secondary-foreground: oklch(0.32 0.03 25);
-  --muted: oklch(0.92 0.012 70);
-  --muted-foreground: oklch(0.5 0.02 40);
-  --accent: oklch(0.83 0.035 130);
-  --accent-foreground: oklch(0.3 0.04 130);
-  --destructive: oklch(0.6 0.18 25);
-  --destructive-foreground: oklch(0.99 0.003 70);
-  --border: oklch(0.87 0.015 60);
-  --input: oklch(0.9 0.012 60);
-  --ring: oklch(0.7627 0.0449 129.2);
-  --chart-1: oklch(0.7627 0.0449 129.2);
-  --chart-2: oklch(0.78 0.045 130);
-  --chart-3: oklch(0.8 0.04 250);
-  --chart-4: oklch(0.83 0.05 60);
-  --chart-5: oklch(0.86 0.015 70);
-  --sidebar: oklch(0.94 0.012 60);
-  --sidebar-foreground: oklch(0.28 0.02 25);
-  --sidebar-primary: oklch(0.7627 0.0449 129.2);
-  --sidebar-primary-foreground: oklch(0.22 0.03 130);
-  --sidebar-accent: oklch(0.88 0.03 130);
-  --sidebar-accent-foreground: oklch(0.3 0.04 130);
-  --sidebar-border: oklch(0.87 0.015 60);
-  --sidebar-ring: oklch(0.7627 0.0449 129.2);
-  --ink: oklch(0.17 0.012 140);
-  --ink-card: oklch(0.22 0.014 140);
-  --ink-foreground: oklch(0.97 0.005 90);
-  --ink-muted: oklch(0.72 0.012 120);
+  /* Paleta oficial (hex exactos): Salvia #99B898, Nude #FECEA8, Coral #FF847C, Rojo #E84A5F, Navy #2A363B */
+  --background: oklch(0.97 0.006 90);        /* base clara neutra */
+  --surface: oklch(0.94 0.008 85);
+  --foreground: #2A363B;                     /* navy (texto) */
+  --card: #ffffff;
+  --card-foreground: #2A363B;
+  --popover: #ffffff;
+  --popover-foreground: #2A363B;
+  --primary: #99B898;                        /* salvia */
+  --primary-foreground: #2A363B;
+  --primary-soft: oklch(0.9 0.03 145);
+  --secondary: #FECEA8;                      /* nude */
+  --secondary-foreground: #2A363B;
+  --muted: oklch(0.94 0.008 85);
+  --muted-foreground: oklch(0.52 0.02 245);
+  --accent: #FF847C;                         /* coral */
+  --accent-foreground: #2A363B;
+  --destructive: #E84A5F;                    /* rojo */
+  --destructive-foreground: #ffffff;
+  --border: oklch(0.9 0.008 82);
+  --input: oklch(0.92 0.008 82);
+  --ring: #99B898;
+  --chart-1: #99B898;
+  --chart-2: #FF847C;
+  --chart-3: #E84A5F;
+  --chart-4: #FECEA8;
+  --chart-5: #2A363B;
+  --sidebar: oklch(0.96 0.007 88);
+  --sidebar-foreground: #2A363B;
+  --sidebar-primary: #99B898;
+  --sidebar-primary-foreground: #2A363B;
+  --sidebar-accent: #FECEA8;
+  --sidebar-accent-foreground: #2A363B;
+  --sidebar-border: oklch(0.9 0.008 82);
+  --sidebar-ring: #99B898;
+  --ink: #2A363B;                            /* navy (secciones oscuras / hero) */
+  --ink-card: oklch(0.36 0.02 240);
+  --ink-foreground: oklch(0.97 0.006 88);    /* crema */
+  --ink-muted: oklch(0.74 0.02 240);
 }
 
 .dark {
@@ -226,9 +226,10 @@
     inset: 0;
     z-index: -1;
     background:
-      radial-gradient(48% 40% at 18% 22%, oklch(0.72 0.09 145 / 0.45), transparent 70%),
-      radial-gradient(42% 38% at 82% 18%, oklch(0.76 0.08 70 / 0.38), transparent 72%),
-      radial-gradient(60% 50% at 50% 100%, oklch(0.7 0.07 30 / 0.32), transparent 70%);
+      radial-gradient(48% 42% at 16% 20%, rgba(153, 184, 152, 0.42), transparent 70%),   /* #99B898 salvia */
+      radial-gradient(42% 40% at 84% 16%, rgba(254, 206, 168, 0.30), transparent 72%),    /* #FECEA8 nude */
+      radial-gradient(52% 46% at 80% 90%, rgba(255, 132, 124, 0.30), transparent 70%),    /* #FF847C coral */
+      radial-gradient(54% 48% at 28% 98%, rgba(232, 74, 95, 0.24), transparent 72%);      /* #E84A5F rojo */
     filter: blur(30px);
   }
 }

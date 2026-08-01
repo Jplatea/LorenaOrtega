@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   Leaf,
@@ -13,9 +13,16 @@ import {
   Activity,
   MessagesSquare,
   Check,
+  Eye,
+  EyeOff,
+  Loader2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Reveal } from "@/components/reveal";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -86,6 +93,19 @@ const meals = [
 
 function LandingPage() {
   const [open, setOpen] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [authed, setAuthed] = useState(false);
+
+  function openLogin() {
+    setOpen(false);
+    setShowLogin(true);
+  }
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    setAuthed(false);
+    setShowLogin(false);
+  }
 
   return (
     <div className="min-h-dvh bg-background">
@@ -102,51 +122,23 @@ function LandingPage() {
               </span>
             </Link>
 
-            <div className="flex items-center gap-2">
-              <nav className="hidden items-center gap-7 md:flex">
-                {navLinks.map((l) => (
-                  <a
-                    key={l.href}
-                    href={l.href}
-                    className="text-[13px] text-ink-muted transition-colors hover:text-ink-foreground"
-                  >
-                    {l.label}
-                  </a>
-                ))}
-              </nav>
-              <Button asChild size="sm" className="hidden md:inline-flex">
-                <Link to="/auth">Acceder</Link>
-              </Button>
-              <button
-                type="button"
-                onClick={() => setOpen((v) => !v)}
-                aria-label={open ? "Cerrar menú" : "Abrir menú"}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-ink-card md:hidden"
-              >
-                {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-              </button>
-            </div>
+            <Button size="sm" onClick={openLogin}>
+              Acceder
+            </Button>
           </div>
-
-          {open && (
-            <nav className="flex flex-col gap-1 border-t border-ink-muted/20 py-4 md:hidden">
-              {navLinks.map((l) => (
-                <a
-                  key={l.href}
-                  href={l.href}
-                  onClick={() => setOpen(false)}
-                  className="rounded-xl px-3 py-2 text-sm text-ink-muted hover:bg-ink-card hover:text-ink-foreground"
-                >
-                  {l.label}
-                </a>
-              ))}
-              <Button asChild className="mt-2 w-full">
-                <Link to="/auth">Acceder</Link>
-              </Button>
-            </nav>
-          )}
         </div>
       </header>
+
+      {/* Login in-page + panel de 3 tarjetas (sin cambiar de página) */}
+      {(showLogin || authed) && (
+        <div className="fixed inset-x-0 bottom-0 top-16 z-40 flex items-start justify-center overflow-y-auto bg-background/95 px-4 py-12 backdrop-blur-xl duration-500 animate-in fade-in sm:items-center">
+          {authed ? (
+            <DashboardCards onSignOut={handleSignOut} />
+          ) : (
+            <LoginCard onClose={() => setShowLogin(false)} onSuccess={() => setAuthed(true)} />
+          )}
+        </div>
+      )}
 
       {/* 2. Hero */}
       <section id="inicio" className="aurora-bg overflow-hidden text-ink-foreground">
@@ -298,21 +290,33 @@ function LandingPage() {
           </Reveal>
 
           <Reveal delay={120}>
-            <div className="relative overflow-hidden rounded-3xl bg-ink p-6 text-ink-foreground shadow-[var(--shadow-float)] sm:p-8">
+            <div
+              className="relative overflow-hidden rounded-3xl border border-border p-6 text-foreground shadow-[var(--shadow-float)] sm:p-8"
+              style={{
+                background:
+                  "linear-gradient(135deg," +
+                  "rgba(153,184,152,0.30) 0%," + // #99B898 salvia
+                  "rgba(254,206,168,0.22) 28%," + // #FECEA8 nude
+                  "rgba(255,132,124,0.20) 52%," + // #FF847C coral
+                  "rgba(232,74,95,0.15) 74%," + // #E84A5F rojo
+                  "rgba(42,54,59,0.18) 100%)," + // #2A363B navy
+                  "var(--card)",
+              }}
+            >
               <div className="flex gap-2">
                 <span className="h-3 w-3 rounded-full bg-destructive/70" />
                 <span className="h-3 w-3 rounded-full bg-secondary" />
                 <span className="h-3 w-3 rounded-full bg-primary" />
               </div>
               <div className="relative z-10 mt-7 space-y-4 text-sm">
-                <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-ink-card px-4 py-3 text-ink-muted">
+                <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-card px-4 py-3 text-muted-foreground shadow-[var(--shadow-elevated)]">
                   Quiero un plan de 5 comidas, sin lactosa, para entrenar por la tarde.
                 </div>
-                <div className="ml-auto max-w-[90%] rounded-2xl rounded-tr-sm bg-primary/20 px-4 py-3">
+                <div className="ml-auto max-w-[90%] rounded-2xl rounded-tr-sm bg-card px-4 py-3 text-foreground shadow-[var(--shadow-elevated)]">
                   Plan semanal generado: 5 comidas al día, sin lactosa, con carbohidrato de calidad
                   en almuerzo y cena previa al entrenamiento.
                 </div>
-                <div className="rounded-2xl border border-ink-muted/20 px-4 py-3 text-ink-muted">
+                <div className="rounded-2xl px-4 py-3 text-muted-foreground">
                   <div className="text-xs uppercase tracking-wider">Resumen</div>
                   <div className="mt-2 grid grid-cols-3 gap-3 text-center">
                     {[
@@ -320,15 +324,14 @@ function LandingPage() {
                       ["120 g", "proteína"],
                       ["7", "días"],
                     ].map(([v, l]) => (
-                      <div key={l} className="rounded-xl bg-ink-card px-2 py-3">
-                        <div className="text-base font-semibold text-ink-foreground">{v}</div>
+                      <div key={l} className="rounded-xl bg-card px-2 py-3 shadow-[var(--shadow-elevated)]">
+                        <div className="text-base font-semibold text-foreground">{v}</div>
                         <div className="text-[11px]">{l}</div>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
-              <div className="pointer-events-none absolute -bottom-16 -right-16 h-56 w-56 rounded-full bg-primary/40 blur-3xl" />
             </div>
           </Reveal>
         </div>
@@ -363,8 +366,13 @@ function LandingPage() {
       <section className="bg-background px-4 pb-20 sm:px-6 sm:pb-28">
         <Reveal className="mx-auto max-w-7xl">
           <div className="grid overflow-hidden rounded-3xl shadow-[var(--shadow-float)] lg:grid-cols-2">
-            <div className="relative flex min-h-[280px] items-center justify-center overflow-hidden bg-ink p-10 text-ink-foreground">
-              <div className="pointer-events-none absolute h-64 w-64 rounded-full bg-primary/45 blur-3xl" />
+            <div
+              className="relative flex min-h-[280px] items-center justify-center overflow-hidden p-10 text-foreground"
+              style={{
+                background:
+                  "linear-gradient(140deg, rgba(153,184,152,0.30), rgba(254,206,168,0.22)), var(--card)",
+              }}
+            >
               <div className="relative z-10 text-center">
                 <Leaf className="mx-auto h-9 w-9 text-primary" />
                 <h3 className="mt-5 text-2xl font-bold sm:text-3xl">
@@ -372,12 +380,12 @@ function LandingPage() {
                   <br />
                   siempre contigo
                 </h3>
-                <p className="mx-auto mt-3 max-w-xs text-sm text-ink-muted">
+                <p className="mx-auto mt-3 max-w-xs text-sm text-muted-foreground">
                   Acceso privado y seguro a tus planes y documentos.
                 </p>
               </div>
             </div>
-            <div className="teal-panel p-10 text-ink-foreground">
+            <div className="p-10 text-foreground" style={{ background: "linear-gradient(140deg, #FECEA8, #FF847C)" }}>
               <h3 className="text-2xl font-bold sm:text-3xl">Incluido en tu área</h3>
               <ul className="mt-6 space-y-4 text-sm">
                 {[
@@ -392,10 +400,8 @@ function LandingPage() {
                   </li>
                 ))}
               </ul>
-              <Button asChild variant="ink" size="lg" className="mt-8">
-                <Link to="/auth">
-                  Entrar a mi área <ArrowRight className="h-4 w-4" />
-                </Link>
+              <Button variant="ink" size="lg" className="mt-8" onClick={openLogin}>
+                Entrar a mi área <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -443,10 +449,8 @@ function LandingPage() {
             <p className="mx-auto mt-4 max-w-md text-sm text-ink-muted sm:text-base">
               Reserva tu primera consulta y recibe tu acceso privado.
             </p>
-            <Button asChild size="lg" className="mt-9">
-              <Link to="/auth">
-                Acceder a mi cuenta <ArrowRight className="h-4 w-4" />
-              </Link>
+            <Button size="lg" className="mt-9" onClick={openLogin}>
+              Acceder a mi cuenta <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
         </Reveal>
@@ -533,6 +537,172 @@ function FooterCol({
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function LoginCard({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [show, setShow] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    setLoading(false);
+    if (error) {
+      toast.error("No se ha podido iniciar sesión", { description: error.message });
+      return;
+    }
+    if (data.user) {
+      supabase
+        .from("profiles")
+        .update({ last_sign_in_at: new Date().toISOString() })
+        .eq("id", data.user.id)
+        .then(() => {});
+    }
+    onSuccess();
+  }
+
+  return (
+    <div
+      className="relative w-full max-w-md overflow-hidden rounded-3xl border border-border p-8 shadow-[var(--shadow-float)] duration-500 animate-in fade-in zoom-in-95"
+      style={{
+        background:
+          "linear-gradient(135deg," +
+          "rgba(153,184,152,0.30) 0%," +
+          "rgba(254,206,168,0.22) 28%," +
+          "rgba(255,132,124,0.20) 52%," +
+          "rgba(232,74,95,0.15) 74%," +
+          "rgba(42,54,59,0.18) 100%)," +
+          "var(--card)",
+      }}
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Cerrar"
+        className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground"
+      >
+        <X className="h-4 w-4" />
+      </button>
+
+      <div className="flex items-center gap-2 text-primary">
+        <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/25">
+          <Leaf className="h-4 w-4" />
+        </span>
+        <span className="text-sm font-semibold text-foreground">Lorena Ortega Dietética</span>
+      </div>
+
+      <h2 className="mt-6 text-2xl font-semibold tracking-tight text-foreground">Iniciar sesión</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Accede con las credenciales que te ha facilitado tu nutricionista.
+      </p>
+
+      <form onSubmit={onSubmit} className="mt-6 space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="login-email">Usuario / correo</Label>
+          <Input
+            id="login-email"
+            type="email"
+            autoComplete="username"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="tu@correo.com"
+            className="bg-card shadow-[var(--shadow-elevated)]"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="login-password">Contraseña</Label>
+          <div className="relative">
+            <Input
+              id="login-password"
+              type={show ? "text" : "password"}
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="bg-card pr-10 shadow-[var(--shadow-elevated)]"
+            />
+            <button
+              type="button"
+              onClick={() => setShow((s) => !s)}
+              className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
+              aria-label={show ? "Ocultar contraseña" : "Mostrar contraseña"}
+            >
+              {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+        </div>
+        <Button type="submit" className="w-full" disabled={loading}>
+          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+          Iniciar sesión
+        </Button>
+      </form>
+
+      <p className="mt-5 text-center text-xs text-muted-foreground">
+        ¿Problemas para acceder? Contacta con tu nutricionista.
+      </p>
+    </div>
+  );
+}
+
+const DEFAULT_CARD_BG =
+  "linear-gradient(135deg," +
+  "rgba(153,184,152,0.30) 0%," +
+  "rgba(254,206,168,0.22) 28%," +
+  "rgba(255,132,124,0.20) 52%," +
+  "rgba(232,74,95,0.15) 74%," +
+  "rgba(42,54,59,0.18) 100%)," +
+  "var(--card)";
+
+function DashboardCards({ onSignOut }: { onSignOut: () => void }) {
+  const navigate = useNavigate();
+
+  const cards = [
+    { label: "Clientes", desc: "Gestiona tus pacientes y sus fichas.", icon: Users, to: "/admin/patients" as const },
+    { label: "Menús", desc: "Tu recetario por tipo de comida.", icon: BookOpen, to: "/admin/recipes" as const },
+    { label: "Dietas", desc: "Planes semanales de cada paciente.", icon: NotebookPen, to: "/admin/patients" as const },
+  ];
+
+  return (
+    <div className="w-full max-w-4xl duration-500 animate-in fade-in zoom-in-95">
+      <div className="text-center">
+        <h2 className="text-3xl font-semibold tracking-tight text-foreground">¿Qué quieres gestionar?</h2>
+        <p className="mt-2 text-sm text-muted-foreground">Elige una sección para empezar.</p>
+      </div>
+
+      <div className="mt-10 grid gap-5 sm:grid-cols-3">
+        {cards.map((c) => (
+          <button
+            key={c.label}
+            type="button"
+            onClick={() => navigate({ to: c.to })}
+            className="group relative overflow-hidden rounded-3xl border border-border p-7 text-left shadow-[var(--shadow-float)] transition hover:-translate-y-1"
+            style={{ background: DEFAULT_CARD_BG }}
+          >
+            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-card text-primary shadow-[var(--shadow-elevated)]">
+              <c.icon className="h-5 w-5" />
+            </span>
+            <h3 className="mt-5 text-xl font-semibold text-foreground">{c.label}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">{c.desc}</p>
+            <ArrowRight className="mt-6 h-4 w-4 text-muted-foreground transition group-hover:translate-x-1" />
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-8 text-center">
+        <button
+          type="button"
+          onClick={onSignOut}
+          className="text-xs text-muted-foreground underline underline-offset-4 transition hover:text-foreground"
+        >
+          Cerrar sesión
+        </button>
+      </div>
     </div>
   );
 }
