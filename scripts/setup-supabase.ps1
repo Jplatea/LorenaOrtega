@@ -3,7 +3,7 @@
   Automatiza la migración del backend a TU propio proyecto de Supabase.
 
   Qué hace:
-    1. Comprueba (e instala) la CLI de Supabase.
+    1. Usa la CLI de Supabase vía `npx` (no instala nada global).
     2. Hace login, enlaza tu proyecto y aplica las 10 migraciones (supabase db push).
     3. Actualiza el .env con la URL y las claves de TU Supabase (guarda copia .env.bak).
 
@@ -11,7 +11,7 @@
     ./scripts/setup-supabase.ps1 -ProjectRef "abcd1234" -Url "https://abcd1234.supabase.co" -AnonKey "sb_publishable_..."
 
   Si no pasas parámetros, te los pedirá por consola.
-  Consigue estos valores en Supabase → Project Settings → API.
+  Consigue estos valores en Supabase -> Project Settings -> API.
 #>
 
 param(
@@ -24,29 +24,27 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot   # carpeta del proyecto (padre de /scripts)
 Set-Location $root
 
-Write-Host "== Migración de backend a tu Supabase ==" -ForegroundColor Cyan
+Write-Host "== Migracion de backend a tu Supabase ==" -ForegroundColor Cyan
 
-# 1. CLI de Supabase
-if (-not (Get-Command supabase -ErrorAction SilentlyContinue)) {
-  Write-Host "Instalando la CLI de Supabase (npm global)..." -ForegroundColor Yellow
-  npm install -g supabase
-}
-supabase --version | Out-Null
-
-# 2. Datos del proyecto
+# 0. Datos del proyecto
 if (-not $ProjectRef) { $ProjectRef = Read-Host "Project ref de Supabase (ej. abcd1234)" }
 if (-not $Url)        { $Url        = Read-Host "Project URL (ej. https://abcd1234.supabase.co)" }
 if (-not $AnonKey)    { $AnonKey    = Read-Host "Anon / publishable key (sb_publishable_...)" }
 
-# 3. Login + link + push
-Write-Host "`nHaciendo login en Supabase (se abrirá el navegador)..." -ForegroundColor Yellow
-supabase login
+# CLI de Supabase via npx (funciona en Windows sin instalar global)
+$sb = "npx","--yes","supabase@latest"
 
-Write-Host "Enlazando el proyecto $ProjectRef ..." -ForegroundColor Yellow
-supabase link --project-ref $ProjectRef
+# 1. Login (abre el navegador)
+Write-Host "`n[1/3] Login en Supabase (se abrira el navegador)..." -ForegroundColor Yellow
+& $sb login
 
-Write-Host "Aplicando migraciones (supabase db push) ..." -ForegroundColor Yellow
-supabase db push
+# 2. Link del proyecto (pedira la contrasena de la base de datos)
+Write-Host "[2/3] Enlazando el proyecto $ProjectRef ..." -ForegroundColor Yellow
+& $sb link --project-ref $ProjectRef
+
+# 3. Aplicar migraciones
+Write-Host "[3/3] Aplicando migraciones (supabase db push) ..." -ForegroundColor Yellow
+& $sb db push
 
 # 4. Actualizar .env
 $envPath = Join-Path $root ".env"
@@ -64,6 +62,8 @@ Set-Content -Path $envPath -Value $envContent -Encoding utf8
 
 Write-Host "`n.env actualizado con TU Supabase." -ForegroundColor Green
 Write-Host "Reinicia el servidor:  npm run dev" -ForegroundColor Green
-Write-Host "`nRecuerda: para operaciones de admin (crear pacientes) el servidor necesita" -ForegroundColor Yellow
-Write-Host "la SUPABASE_SERVICE_ROLE_KEY como variable de entorno del hosting (NO en .env del repo)." -ForegroundColor Yellow
-Write-Host "Y crea el bucket de Storage 'patient-documents' (privado) en tu nuevo Supabase." -ForegroundColor Yellow
+Write-Host "`nSiguiente:" -ForegroundColor Yellow
+Write-Host " - Crea el bucket de Storage 'patient-documents' (privado) en tu nuevo Supabase." -ForegroundColor Yellow
+Write-Host " - Para crear el primer admin (pagina /setup) y crear pacientes, el servidor" -ForegroundColor Yellow
+Write-Host "   necesita la SUPABASE_SERVICE_ROLE_KEY. En local anadela temporalmente al .env;" -ForegroundColor Yellow
+Write-Host "   en produccion, ponla como variable de entorno del hosting (nunca en el repo)." -ForegroundColor Yellow
