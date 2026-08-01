@@ -1,0 +1,28 @@
+import { createFileRoute, Outlet, redirect, useRouterState } from "@tanstack/react-router";
+import { supabase } from "@/integrations/supabase/client";
+
+export const Route = createFileRoute("/_authenticated")({
+  ssr: false,
+  beforeLoad: async ({ location }) => {
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data.user) throw redirect({ to: "/auth" });
+
+    // Check profile must_change_password
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("must_change_password")
+      .eq("id", data.user.id)
+      .maybeSingle();
+
+    if (profile?.must_change_password && location.pathname !== "/change-password") {
+      throw redirect({ to: "/change-password" });
+    }
+    return { userId: data.user.id };
+  },
+  component: AuthenticatedLayout,
+});
+
+function AuthenticatedLayout() {
+  useRouterState();
+  return <Outlet />;
+}
