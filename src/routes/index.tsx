@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Leaf,
   ArrowRight,
@@ -24,6 +24,9 @@ import {
   Lock,
   LockOpen,
   Pencil,
+  Upload,
+  Link as LinkIcon,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -37,7 +40,7 @@ import { Reveal } from "@/components/reveal";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { createPatient } from "@/lib/patients.functions";
-import { MEALS } from "@/lib/domain";
+import { MEALS, DAYS } from "@/lib/domain";
 import { ensureIngredients } from "@/lib/recipes";
 
 export const Route = createFileRoute("/")({
@@ -112,12 +115,22 @@ function LandingPage() {
   const [showLogin, setShowLogin] = useState(false);
   const [authed, setAuthed] = useState(false);
 
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) return;
+      // Solo mantenemos la sesión si el usuario marcó "ordenador personal".
+      if (localStorage.getItem("lo-persist") === "1") setAuthed(true);
+      else supabase.auth.signOut();
+    });
+  }, []);
+
   function openLogin() {
     setOpen(false);
     setShowLogin(true);
   }
 
   async function handleSignOut() {
+    localStorage.removeItem("lo-persist");
     await supabase.auth.signOut();
     setAuthed(false);
     setShowLogin(false);
@@ -588,6 +601,7 @@ function LoginCard({ onClose, onSuccess }: { onClose: () => void; onSuccess: () 
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [trust, setTrust] = useState(true);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -605,6 +619,8 @@ function LoginCard({ onClose, onSuccess }: { onClose: () => void; onSuccess: () 
         .eq("id", data.user.id)
         .then(() => {});
     }
+    if (trust) localStorage.setItem("lo-persist", "1");
+    else localStorage.removeItem("lo-persist");
     onSuccess();
   }
 
@@ -679,6 +695,17 @@ function LoginCard({ onClose, onSuccess }: { onClose: () => void; onSuccess: () 
             </button>
           </div>
         </div>
+        <label className="flex items-start gap-2 text-sm text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={trust}
+            onChange={(e) => setTrust(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+          />
+          <span>
+            Este es mi <span className="font-medium text-foreground">ordenador personal</span> — mantener la sesión iniciada.
+          </span>
+        </label>
         <Button type="submit" className="w-full" disabled={loading}>
           {loading ? <LoadingBar /> : "Iniciar sesión"}
         </Button>
@@ -740,26 +767,39 @@ function DashboardCards() {
               {isOpen ? (
                 <ExpandedCard card={c} onClose={() => setExpanded(null)} />
               ) : (
-                <button
-                  type="button"
-                  onClick={() => setExpanded(c.label)}
-                  className="group flex h-full min-h-[220px] w-full flex-col items-start p-7 text-left"
-                >
-                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-card text-foreground shadow-[var(--shadow-elevated)]">
-                    <c.icon className="h-5 w-5" />
-                  </span>
-                  {isCollapsed ? (
-                    <span className="mt-4 hidden text-xs font-medium text-foreground [writing-mode:vertical-rl] md:inline">
-                      {c.label}
+                <div className="relative h-full">
+                  <button
+                    type="button"
+                    onClick={() => setExpanded(c.label)}
+                    className="group flex h-full min-h-[220px] w-full flex-col items-start p-7 text-left"
+                  >
+                    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-card text-foreground shadow-[var(--shadow-elevated)]">
+                      <c.icon className="h-5 w-5" />
                     </span>
-                  ) : (
-                    <>
-                      <h3 className="mt-5 text-xl font-semibold text-foreground">{c.label}</h3>
-                      <p className="mt-1 text-sm text-muted-foreground">{c.desc}</p>
-                      <ArrowRight className="mt-auto pt-6 h-4 w-4 text-muted-foreground transition group-hover:translate-x-1" />
-                    </>
+                    {isCollapsed ? (
+                      <span className="mt-4 hidden text-xs font-medium text-foreground [writing-mode:vertical-rl] md:inline">
+                        {c.label}
+                      </span>
+                    ) : (
+                      <>
+                        <h3 className="mt-5 text-xl font-semibold text-foreground">{c.label}</h3>
+                        <p className="mt-1 text-sm text-muted-foreground">{c.desc}</p>
+                        <ArrowRight className="mt-auto pt-6 h-4 w-4 text-muted-foreground transition group-hover:translate-x-1" />
+                      </>
+                    )}
+                  </button>
+                  {!isCollapsed && (
+                    <button
+                      type="button"
+                      onClick={() => setExpanded(c.label)}
+                      aria-label={`Ver listado de ${c.label}`}
+                      title={`Ver listado de ${c.label}`}
+                      className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full bg-card/80 text-muted-foreground shadow-[var(--shadow-soft)] backdrop-blur transition hover:text-foreground"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </button>
                   )}
-                </button>
+                </div>
               )}
             </div>
           );
@@ -794,6 +834,10 @@ function ExpandedCard({ card, onClose }: { card: DashCard; onClose: () => void }
           <ClientesPanel />
         ) : card.label === "Recetas" ? (
           <RecetasPanel />
+        ) : card.label === "Dietas" ? (
+          <DietasPanel />
+        ) : card.label === "Recursos" ? (
+          <RecursosPanel />
         ) : (
           <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 text-center">
             <p className="max-w-sm text-sm text-muted-foreground">
@@ -1096,6 +1140,422 @@ function RecipeEditor({
           ) : (
             <>
               <Plus className="h-4 w-4" /> {recipe ? "Guardar cambios" : "Guardar receta"}
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+type ResourceItem = {
+  id: string;
+  kind: "file" | "url";
+  title: string;
+  url: string | null;
+  file_path: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+};
+
+function RecursosPanel() {
+  const qc = useQueryClient();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [addingUrl, setAddingUrl] = useState(false);
+  const [urlTitle, setUrlTitle] = useState("");
+  const [urlValue, setUrlValue] = useState("");
+
+  const table = () => (supabase as unknown as { from: (t: string) => any }).from("resources");
+
+  const { data: resources, isLoading } = useQuery({
+    queryKey: ["recursos-list"],
+    queryFn: async () => {
+      const { data } = await table()
+        .select("id, kind, title, url, file_path, mime_type, size_bytes")
+        .order("created_at", { ascending: false });
+      return (data ?? []) as ResourceItem[];
+    },
+  });
+
+  const refresh = () => qc.invalidateQueries({ queryKey: ["recursos-list"] });
+
+  async function uploadFile(file: File) {
+    setUploading(true);
+    const { data: u } = await supabase.auth.getUser();
+    const safe = file.name.replace(/[^\w.\-]/g, "_");
+    const path = `${crypto.randomUUID()}-${safe}`;
+    const { error: upErr } = await supabase.storage.from("resources").upload(path, file, {
+      contentType: file.type || undefined,
+    });
+    if (upErr) {
+      setUploading(false);
+      toast.error("No se pudo subir", { description: upErr.message });
+      return;
+    }
+    const { error } = await table().insert({
+      kind: "file",
+      title: file.name,
+      file_path: path,
+      mime_type: file.type || null,
+      size_bytes: file.size,
+      created_by: u.user?.id ?? null,
+    });
+    setUploading(false);
+    if (error) {
+      await supabase.storage.from("resources").remove([path]);
+      toast.error("No se pudo guardar", { description: error.message });
+      return;
+    }
+    toast.success("Archivo subido ✓");
+    refresh();
+  }
+
+  async function addUrl() {
+    if (!urlTitle.trim() || !urlValue.trim()) {
+      toast.error("Título y URL son obligatorios");
+      return;
+    }
+    const { data: u } = await supabase.auth.getUser();
+    const { error } = await table().insert({
+      kind: "url",
+      title: urlTitle.trim(),
+      url: urlValue.trim(),
+      created_by: u.user?.id ?? null,
+    });
+    if (error) {
+      toast.error("No se pudo guardar", { description: error.message });
+      return;
+    }
+    toast.success("Enlace añadido ✓");
+    setUrlTitle("");
+    setUrlValue("");
+    setAddingUrl(false);
+    refresh();
+  }
+
+  async function openResource(r: ResourceItem) {
+    if (r.kind === "url" && r.url) {
+      window.open(r.url, "_blank", "noopener");
+      return;
+    }
+    if (r.kind === "file" && r.file_path) {
+      const { data, error } = await supabase.storage.from("resources").createSignedUrl(r.file_path, 60);
+      if (error || !data?.signedUrl) {
+        toast.error("No se pudo abrir el archivo");
+        return;
+      }
+      window.open(data.signedUrl, "_blank", "noopener");
+    }
+  }
+
+  async function remove(r: ResourceItem) {
+    const { error } = await table().delete().eq("id", r.id);
+    if (error) {
+      toast.error("No se pudo eliminar", { description: error.message });
+      return;
+    }
+    if (r.kind === "file" && r.file_path) await supabase.storage.from("resources").remove([r.file_path]);
+    toast.success("Recurso eliminado");
+    refresh();
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="text-sm text-muted-foreground">
+          {isLoading ? "Cargando…" : `${resources?.length ?? 0} recursos`}
+        </span>
+        <div className="flex gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) uploadFile(f);
+              e.target.value = "";
+            }}
+          />
+          <Button size="sm" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()}>
+            {uploading ? (
+              <LoadingBar />
+            ) : (
+              <>
+                <Upload className="h-4 w-4" /> Subir archivo
+              </>
+            )}
+          </Button>
+          <Button size="sm" onClick={() => setAddingUrl((v) => !v)}>
+            <LinkIcon className="h-4 w-4" /> Añadir enlace
+          </Button>
+        </div>
+      </div>
+
+      {addingUrl && (
+        <div className="space-y-2 rounded-2xl bg-card p-4 shadow-[var(--shadow-elevated)]">
+          <Input
+            value={urlTitle}
+            onChange={(e) => setUrlTitle(e.target.value)}
+            placeholder="Título del enlace"
+            className="bg-card shadow-[var(--shadow-soft)]"
+          />
+          <Input
+            value={urlValue}
+            onChange={(e) => setUrlValue(e.target.value)}
+            placeholder="https://…"
+            className="bg-card shadow-[var(--shadow-soft)]"
+          />
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={() => setAddingUrl(false)}>
+              Cancelar
+            </Button>
+            <Button size="sm" onClick={addUrl}>
+              Guardar enlace
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-elevated)]">
+        {isLoading ? (
+          <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
+        ) : resources && resources.length > 0 ? (
+          <ul className="divide-y divide-border">
+            {resources.map((r) => (
+              <li key={r.id} className="flex items-center gap-3 px-4 py-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-foreground">
+                  {r.kind === "url" ? <LinkIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                </span>
+                <button type="button" onClick={() => openResource(r)} className="min-w-0 flex-1 text-left">
+                  <div className="truncate text-sm font-medium text-foreground">{r.title}</div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {r.kind === "url" ? r.url : (r.mime_type ?? "Archivo")}
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => remove(r)}
+                  aria-label="Eliminar"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-destructive transition hover:opacity-80"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            Aún no hay recursos. Sube un archivo o añade un enlace.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DietasPanel() {
+  const [client, setClient] = useState<{ id: string; name: string } | null>(null);
+
+  const { data: clients, isLoading } = useQuery({
+    queryKey: ["clientes-dietas"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, first_name, last_name, email")
+        .order("first_name");
+      return data ?? [];
+    },
+  });
+
+  if (client) {
+    return <DietEditor patientId={client.id} patientName={client.name} onBack={() => setClient(null)} />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">Elige un cliente para editar su dieta semanal.</p>
+      <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-elevated)]">
+        {isLoading ? (
+          <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
+        ) : clients && clients.length > 0 ? (
+          <ul className="divide-y divide-border">
+            {clients.map((c) => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  onClick={() => setClient({ id: c.id, name: `${c.first_name} ${c.last_name}`.trim() })}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-muted/50"
+                >
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary-soft text-sm font-medium text-foreground">
+                    {(c.first_name?.[0] ?? "") + (c.last_name?.[0] ?? "")}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-foreground">
+                      {c.first_name} {c.last_name}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">{c.email}</div>
+                  </div>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            Aún no tienes clientes. Créalos en la tarjeta “Clientes”.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DietEditor({ patientId, patientName, onBack }: { patientId: string; patientName: string; onBack: () => void }) {
+  const qc = useQueryClient();
+  const [week, setWeek] = useState(1);
+  const [activeDay, setActiveDay] = useState<number>(DAYS[0].id);
+  const [rows, setRows] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["diet", patientId, week],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("diets")
+        .select("day_of_week, meal, content")
+        .eq("patient_id", patientId)
+        .eq("week_number", week);
+      return data ?? [];
+    },
+  });
+
+  useEffect(() => {
+    const map: Record<string, string> = {};
+    for (const r of data ?? []) map[`${r.day_of_week}-${r.meal}`] = r.content ?? "";
+    setRows(map);
+  }, [data]);
+
+  async function save() {
+    setSaving(true);
+    const upserts: { patient_id: string; week_number: number; day_of_week: number; meal: string; content: string }[] = [];
+    const deletes: Promise<unknown>[] = [];
+    for (const d of DAYS) {
+      for (const m of MEALS) {
+        const key = `${d.id}-${m.id}`;
+        const content = (rows[key] ?? "").trim();
+        if (content) {
+          upserts.push({ patient_id: patientId, week_number: week, day_of_week: d.id, meal: m.id, content });
+        } else {
+          deletes.push(
+            (async () => {
+              await supabase
+                .from("diets")
+                .delete()
+                .eq("patient_id", patientId)
+                .eq("week_number", week)
+                .eq("day_of_week", d.id)
+                .eq("meal", m.id);
+            })(),
+          );
+        }
+      }
+    }
+    await Promise.all(deletes);
+    if (upserts.length) {
+      const { error } = await supabase
+        .from("diets")
+        .upsert(upserts as never, { onConflict: "patient_id,week_number,day_of_week,meal" });
+      if (error) {
+        setSaving(false);
+        toast.error("No se pudo guardar", { description: error.message });
+        return;
+      }
+    }
+    setSaving(false);
+    toast.success("Dieta guardada ✓");
+    qc.invalidateQueries({ queryKey: ["diet", patientId, week] });
+  }
+
+  return (
+    <div className="space-y-4">
+      <button
+        type="button"
+        onClick={onBack}
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition hover:text-foreground"
+      >
+        <ChevronRight className="h-4 w-4 rotate-180" /> Volver a clientes
+      </button>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-sm text-muted-foreground">Dieta de</div>
+          <div className="text-lg font-semibold text-foreground">{patientName}</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="diet-week" className="text-sm">
+            Semana
+          </Label>
+          <Input
+            id="diet-week"
+            type="number"
+            min={1}
+            value={week}
+            onChange={(e) => setWeek(Math.max(1, Number(e.target.value) || 1))}
+            className="w-20 bg-card shadow-[var(--shadow-elevated)]"
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {DAYS.map((d) => (
+          <button
+            key={d.id}
+            type="button"
+            onClick={() => setActiveDay(d.id)}
+            className={cn(
+              "rounded-full px-4 py-2 text-sm font-medium transition",
+              activeDay === d.id
+                ? "bg-primary text-primary-foreground shadow-[var(--shadow-soft)]"
+                : "bg-card text-foreground shadow-[var(--shadow-elevated)] hover:opacity-90",
+            )}
+          >
+            {d.short}
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
+      ) : (
+        <div className="space-y-3">
+          {MEALS.map((m) => {
+            const key = `${activeDay}-${m.id}`;
+            return (
+              <div key={m.id} className="space-y-1.5">
+                <Label className="flex items-center gap-2">
+                  <span>{m.emoji}</span> {m.label}
+                </Label>
+                <Textarea
+                  value={rows[key] ?? ""}
+                  onChange={(e) => setRows((p) => ({ ...p, [key]: e.target.value }))}
+                  rows={2}
+                  placeholder="Menú, raciones, indicaciones…"
+                  className="bg-card shadow-[var(--shadow-elevated)]"
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="flex justify-end pt-1">
+        <Button onClick={save} disabled={saving || isLoading}>
+          {saving ? (
+            <LoadingBar />
+          ) : (
+            <>
+              <Plus className="h-4 w-4" /> Guardar dieta
             </>
           )}
         </Button>
