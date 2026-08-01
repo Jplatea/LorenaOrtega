@@ -11,8 +11,13 @@
  */
 
 @theme inline {
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
+  --font-sans: "Poppins", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-display: "Poppins", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  /* Poppins solo llega a 500 -> capamos los pesos "fuertes" a 500 */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 500;
+  --font-weight-bold: 500;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -182,7 +187,7 @@
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
     letter-spacing: -0.022em;
-    font-weight: 600;
+    font-weight: 500;
   }
 }
 
@@ -249,6 +254,26 @@
 
 @utility teal-panel {
   background: var(--gradient-teal);
+}
+
+/* Eco de la aurora de la landing en el area privada (suave y legible) */
+@utility app-aurora {
+  position: relative;
+  background: var(--gradient-soft);
+  isolation: isolate;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 460px;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(58% 100% at 14% 0%, oklch(0.72 0.09 145 / 0.16), transparent 62%),
+      radial-gradient(54% 100% at 90% 0%, oklch(0.78 0.07 70 / 0.12), transparent 64%),
+      radial-gradient(50% 90% at 60% 0%, oklch(0.7 0.07 260 / 0.08), transparent 66%);
+    filter: blur(26px);
+  }
 }
 
 

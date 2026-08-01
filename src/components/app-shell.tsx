@@ -41,7 +41,7 @@ export function AppShell({ children }: Props) {
     : user?.email ?? "";
 
   return (
-    <div className="min-h-dvh surface-gradient">
+    <div className="min-h-dvh app-aurora">
       <header className="sticky top-0 z-30 bg-background/70 backdrop-blur-xl border-b border-border/60">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 h-16 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
           <Link to="/" className="flex min-w-0 items-center gap-2 text-primary">
