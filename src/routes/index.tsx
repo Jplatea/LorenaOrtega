@@ -1583,6 +1583,12 @@ function AutoResizeTextarea(props: React.ComponentProps<typeof Textarea>) {
   );
 }
 
+// Un producto a medida guarda "Nombre\nDescripción" en un único campo.
+// Estos helpers separan/juntan ambas partes para editarlas por separado.
+const nameOf = (c: string) => c.split("\n")[0] ?? "";
+const descOf = (c: string) => c.split("\n").slice(1).join("\n");
+const joinND = (n: string, d: string) => (d ? `${n}\n${d}` : n);
+
 function DietEditor({ patientId, patientName, onBack }: { patientId: string; patientName: string; onBack: () => void }) {
   const qc = useQueryClient();
   const [week, setWeek] = useState(1);
@@ -1920,17 +1926,45 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                           )}
                         </div>
                         <div className="space-y-2">
-                          <AutoResizeTextarea
-                            value={opt.content}
-                            onChange={(e) =>
-                              update(key, (v) => {
-                                const next = [...v.options];
-                                next[i] = { recipeId: "", content: e.target.value };
-                                return { ...v, options: next };
-                              })
-                            }
-                            placeholder="Ingredientes, cantidades y preparación…"
-                          />
+                          {opt.recipeId === "" && !pendingTitle ? (
+                            <>
+                              <Input
+                                value={nameOf(opt.content)}
+                                onChange={(e) =>
+                                  update(key, (v) => {
+                                    const next = [...v.options];
+                                    next[i] = { recipeId: "", content: joinND(e.target.value, descOf(opt.content)) };
+                                    return { ...v, options: next };
+                                  })
+                                }
+                                placeholder="Nombre del producto"
+                                className="bg-card font-medium shadow-[var(--shadow-elevated)]"
+                              />
+                              <AutoResizeTextarea
+                                value={descOf(opt.content)}
+                                onChange={(e) =>
+                                  update(key, (v) => {
+                                    const next = [...v.options];
+                                    next[i] = { recipeId: "", content: joinND(nameOf(opt.content), e.target.value) };
+                                    return { ...v, options: next };
+                                  })
+                                }
+                                placeholder="Descripción: ingredientes, cantidades y preparación…"
+                              />
+                            </>
+                          ) : (
+                            <AutoResizeTextarea
+                              value={opt.content}
+                              onChange={(e) =>
+                                update(key, (v) => {
+                                  const next = [...v.options];
+                                  next[i] = { recipeId: "", content: e.target.value };
+                                  return { ...v, options: next };
+                                })
+                              }
+                              placeholder="Ingredientes, cantidades y preparación…"
+                            />
+                          )}
                           {pendingTitle && (
                             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary-soft/60 px-3 py-2">
                               <p className="text-xs text-foreground/80">
