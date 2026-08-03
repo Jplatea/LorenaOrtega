@@ -12,6 +12,7 @@ export interface DietRow {
 const SAGE: [number, number, number] = [153, 184, 152]; // #99B898
 const SAGE_DARK: [number, number, number] = [86, 110, 74];
 const CORAL: [number, number, number] = [255, 132, 124]; // #FF847C
+const NUDE: [number, number, number] = [254, 206, 168]; // #FECEA8
 const ROJO: [number, number, number] = [232, 74, 95]; // #E84A5F
 const INK: [number, number, number] = [42, 54, 59]; // #2A363B
 const MUTED: [number, number, number] = [120, 122, 118];
@@ -58,9 +59,32 @@ async function renderPdf(opts: { patientName: string; weekNumber: number; rows: 
   const rowContent = (dayId: number, mealId: string) =>
     opts.rows.find((r) => r.day_of_week === dayId && r.meal === mealId)?.content ?? "";
 
+  // Aurora difuminada: manchas de color de la paleta, muy translúcidas,
+  // simuladas con círculos concéntricos (efecto glow), como en la landing.
+  const drawAurora = () => {
+    const g = doc as unknown as {
+      GState?: new (o: { opacity: number }) => unknown;
+      setGState?: (s: unknown) => void;
+    };
+    if (typeof g.GState !== "function" || typeof g.setGState !== "function") return;
+    const blob = (cx: number, cy: number, R: number, rgb: [number, number, number]) => {
+      doc.setFillColor(...rgb);
+      const rings = 30;
+      g.setGState!(new g.GState!({ opacity: 0.006 }));
+      for (let k = rings; k >= 1; k--) doc.circle(cx, cy, (R * k) / rings, "F");
+    };
+    blob(70, 60, 250, SAGE);
+    blob(PAGE_W - 55, 30, 230, CORAL);
+    blob(120, PAGE_H - 30, 290, NUDE);
+    blob(PAGE_W - 120, PAGE_H - 10, 300, ROJO);
+    blob(PAGE_W / 2, PAGE_H + 40, 260, SAGE);
+    g.setGState!(new g.GState!({ opacity: 1 })); // restaurar opacidad
+  };
+
   const drawBackground = () => {
     doc.setFillColor(...PAPER);
     doc.rect(0, 0, PAGE_W, PAGE_H, "F");
+    drawAurora();
   };
 
   const drawBrand = () => {
