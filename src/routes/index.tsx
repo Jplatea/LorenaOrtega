@@ -751,6 +751,51 @@ const PEEK_TABLE: Record<string, PeekTable> = {
   Recursos: "resources",
 };
 
+// Solo las columnas con datos introducidos por el usuario (se ocultan id,
+// fechas de sistema, claves foráneas y rutas internas de gestión).
+const PEEK_COLUMNS: Record<PeekTable, string[]> = {
+  profiles: [
+    "first_name",
+    "last_name",
+    "email",
+    "phone",
+    "dni",
+    "birth_date",
+    "sex",
+    "height",
+    "address",
+    "observations",
+    "is_active",
+  ],
+  recipes: ["meal", "title", "content", "ingredients"],
+  diets: ["week_number", "day_of_week", "meal", "content"],
+  resources: ["kind", "title", "url", "mime_type", "size_bytes"],
+};
+
+const COLUMN_LABELS: Record<string, string> = {
+  first_name: "Nombre",
+  last_name: "Apellidos",
+  email: "Email",
+  phone: "Teléfono",
+  dni: "DNI",
+  birth_date: "Fecha nac.",
+  sex: "Sexo",
+  height: "Altura",
+  address: "Dirección",
+  observations: "Observaciones",
+  is_active: "Activo",
+  meal: "Comida",
+  title: "Título",
+  content: "Contenido",
+  ingredients: "Ingredientes",
+  week_number: "Semana",
+  day_of_week: "Día",
+  kind: "Tipo",
+  url: "Enlace",
+  mime_type: "Tipo de archivo",
+  size_bytes: "Tamaño",
+};
+
 function DashboardCards() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [peek, setPeek] = useState<string | null>(null);
@@ -823,22 +868,30 @@ function DashboardCards() {
 }
 
 function fmtCell(v: unknown): string {
-  if (v === null || v === undefined) return "—";
+  if (v === null || v === undefined || v === "") return "—";
+  if (Array.isArray(v)) {
+    const parts = v.map((it) =>
+      it && typeof it === "object" && "name" in (it as object)
+        ? [(it as { name?: string }).name, (it as { amount?: string }).amount].filter(Boolean).join(" ")
+        : String(it),
+    );
+    return parts.join(", ") || "—";
+  }
   if (typeof v === "object") return JSON.stringify(v);
+  if (typeof v === "boolean") return v ? "Sí" : "No";
   return String(v);
 }
 
 function DataPeekModal({ label, table, onClose }: { label: string; table: PeekTable; onClose: () => void }) {
+  const columns = PEEK_COLUMNS[table];
   const { data: rows, isLoading } = useQuery({
     queryKey: ["peek", table],
     queryFn: async () => {
-      const { data, error } = await supabase.from(table).select("*").limit(1000);
+      const { data, error } = await supabase.from(table).select(columns.join(", ")).limit(1000);
       if (error) throw error;
       return (data ?? []) as unknown as Record<string, unknown>[];
     },
   });
-
-  const columns = rows && rows.length > 0 ? Object.keys(rows[0]) : [];
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 duration-200 animate-in fade-in">
@@ -870,7 +923,7 @@ function DataPeekModal({ label, table, onClose }: { label: string; table: PeekTa
                 <tr>
                   {columns.map((c) => (
                     <th key={c} className="whitespace-nowrap px-3 py-2 text-left font-medium text-muted-foreground">
-                      {c}
+                      {COLUMN_LABELS[c] ?? c}
                     </th>
                   ))}
                 </tr>
