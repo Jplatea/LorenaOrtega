@@ -743,8 +743,17 @@ const DASH_CARDS: DashCard[] = [
   { label: "Recursos", desc: "Guías y materiales de apoyo.", icon: Activity, bg: "linear-gradient(150deg, #E6E4E1, #F1EFEC)" },
 ];
 
+type PeekTable = "profiles" | "recipes" | "diets" | "resources";
+const PEEK_TABLE: Record<string, PeekTable> = {
+  Clientes: "profiles",
+  Recetas: "recipes",
+  Dietas: "diets",
+  Recursos: "resources",
+};
+
 function DashboardCards() {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [peek, setPeek] = useState<string | null>(null);
 
   return (
     <div className="w-full max-w-6xl duration-500 animate-in fade-in zoom-in-95">
@@ -793,9 +802,9 @@ function DashboardCards() {
                   {!isCollapsed && (
                     <button
                       type="button"
-                      onClick={() => setExpanded(c.label)}
-                      aria-label={`Ver listado de ${c.label}`}
-                      title={`Ver listado de ${c.label}`}
+                      onClick={() => setPeek(c.label)}
+                      aria-label={`Ver base de datos de ${c.label}`}
+                      title={`Ver base de datos completa de ${c.label}`}
                       className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full bg-card/80 text-muted-foreground shadow-[var(--shadow-soft)] backdrop-blur transition hover:text-foreground"
                     >
                       <Eye className="h-4 w-4" />
@@ -806,6 +815,82 @@ function DashboardCards() {
             </div>
           );
         })}
+      </div>
+
+      {peek && <DataPeekModal label={peek} table={PEEK_TABLE[peek]} onClose={() => setPeek(null)} />}
+    </div>
+  );
+}
+
+function fmtCell(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+function DataPeekModal({ label, table, onClose }: { label: string; table: PeekTable; onClose: () => void }) {
+  const { data: rows, isLoading } = useQuery({
+    queryKey: ["peek", table],
+    queryFn: async () => {
+      const { data, error } = await supabase.from(table).select("*").limit(1000);
+      if (error) throw error;
+      return (data ?? []) as unknown as Record<string, unknown>[];
+    },
+  });
+
+  const columns = rows && rows.length > 0 ? Object.keys(rows[0]) : [];
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 duration-200 animate-in fade-in">
+      <button type="button" aria-label="Cerrar" onClick={onClose} className="absolute inset-0 bg-foreground/30 backdrop-blur-sm" />
+      <div className="relative z-10 flex max-h-[85vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-card shadow-[var(--shadow-float)] duration-300 animate-in zoom-in-95">
+        <header className="flex items-center justify-between gap-4 border-b border-border px-6 py-4">
+          <div className="min-w-0">
+            <h3 className="text-lg font-semibold text-foreground">{label} — base de datos</h3>
+            <p className="text-xs text-muted-foreground">
+              {isLoading ? "Cargando…" : `${rows?.length ?? 0} registros · ${columns.length} columnas`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </header>
+
+        <div className="flex-1 overflow-auto">
+          {isLoading ? (
+            <div className="p-8 text-center text-sm text-muted-foreground">Cargando…</div>
+          ) : rows && rows.length > 0 ? (
+            <table className="w-full border-collapse text-sm">
+              <thead className="sticky top-0 z-10 bg-muted">
+                <tr>
+                  {columns.map((c) => (
+                    <th key={c} className="whitespace-nowrap px-3 py-2 text-left font-medium text-muted-foreground">
+                      {c}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r, i) => (
+                  <tr key={i} className="border-t border-border hover:bg-muted/40">
+                    {columns.map((c) => (
+                      <td key={c} className="max-w-[22rem] truncate px-3 py-2 align-top text-foreground" title={fmtCell(r[c])}>
+                        {fmtCell(r[c])}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="p-8 text-center text-sm text-muted-foreground">No hay registros en esta tabla.</div>
+          )}
+        </div>
       </div>
     </div>
   );
