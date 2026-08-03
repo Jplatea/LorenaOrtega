@@ -28,6 +28,7 @@ import {
   Link as LinkIcon,
   FileText,
   Save,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -44,6 +45,7 @@ import { createPatient } from "@/lib/patients.functions";
 import { MEALS, DAYS } from "@/lib/domain";
 import { ensureIngredients, renderIngredients } from "@/lib/recipes";
 import { parseMeal, serializeMeal, type MealValue } from "@/lib/meal-options";
+import { buildDietPdf, type DietRow } from "@/lib/pdf-export";
 import { RecipeCombobox } from "@/components/recipe-combobox";
 
 export const Route = createFileRoute("/")({
@@ -1696,6 +1698,29 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
     return MEALS.some((m) => serializeMeal(getCell(`${dayId}-${m.id}`)).trim());
   }
 
+  const [pdfLoading, setPdfLoading] = useState(false);
+  async function downloadPdf() {
+    setPdfLoading(true);
+    try {
+      const pdfRows: DietRow[] = [];
+      for (const d of DAYS) {
+        for (const m of MEALS) {
+          const content = serializeMeal(getCell(`${d.id}-${m.id}`));
+          if (content.trim()) pdfRows.push({ day_of_week: d.id, meal: m.id, content });
+        }
+      }
+      if (pdfRows.length === 0) {
+        toast.error("La dieta está vacía", { description: "Añade alguna comida antes de descargar." });
+        return;
+      }
+      await buildDietPdf({ patientName, weekNumber: week, rows: pdfRows });
+    } catch {
+      toast.error("No se pudo generar el PDF");
+    } finally {
+      setPdfLoading(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1718,6 +1743,15 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
             onChange={(e) => setWeek(Math.max(1, Number(e.target.value) || 1))}
             className="w-20 bg-card shadow-[var(--shadow-elevated)]"
           />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={downloadPdf}
+            disabled={pdfLoading}
+            title="Descargar la dieta de este cliente en PDF"
+          >
+            {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} PDF
+          </Button>
           <Button size="sm" onClick={save} disabled={saving}>
             {saving ? (
               <LoadingBar />
