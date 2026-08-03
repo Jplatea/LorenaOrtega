@@ -1451,6 +1451,7 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
   const [rows, setRows] = useState<Record<string, MealValue>>({});
   const [saving, setSaving] = useState(false);
   const [pendingNew, setPendingNew] = useState<Record<string, string>>({});
+  const [openMeal, setOpenMeal] = useState<string | null>(null);
 
   const { data: recipes } = useQuery({
     queryKey: ["recipes-diet"],
@@ -1633,45 +1634,71 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
               ...(recipesByMeal[m.id] ?? []),
               ...(recipes ?? []).filter((r) => r.meal !== m.id),
             ];
+            const isOpen = openMeal === m.id;
+            const summary = cell.options
+              .map((opt) => {
+                const src = options.find((o) => o.id === opt.recipeId);
+                return src?.title || opt.content.split("\n")[0]?.trim() || "";
+              })
+              .filter(Boolean)
+              .join(" · ");
             return (
-              <div key={m.id} className="space-y-3 rounded-2xl bg-card p-4 shadow-[var(--shadow-elevated)]">
-                <div className="flex items-center justify-between gap-2">
-                  <Label className="text-sm font-semibold">{m.label}</Label>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 w-8 p-0 font-bold"
-                      title="Añadir otro menú obligatorio (Y)"
-                      onClick={() =>
-                        update(key, (v) => ({
-                          options: [...v.options, { recipeId: "", content: "" }],
-                          joiners: [...v.joiners, "y"],
-                        }))
-                      }
-                    >
-                      Y
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 w-8 p-0 font-bold"
-                      title="Añadir menú alternativo (O)"
-                      onClick={() =>
-                        update(key, (v) => ({
-                          options: [...v.options, { recipeId: "", content: "" }],
-                          joiners: [...v.joiners, "o"],
-                        }))
-                      }
-                    >
-                      O
-                    </Button>
-                  </div>
-                </div>
+              <div key={m.id} className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-elevated)]">
+                <button
+                  type="button"
+                  onClick={() => setOpenMeal(isOpen ? null : m.id)}
+                  className="flex w-full items-center justify-between gap-3 p-4 text-left"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold">{m.label}</span>
+                    {!isOpen && summary && (
+                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">{summary}</span>
+                    )}
+                  </span>
+                  <ChevronRight
+                    className={cn(
+                      "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
+                      isOpen && "rotate-90",
+                    )}
+                  />
+                </button>
 
-                {cell.options.map((opt, i) => {
+                {isOpen && (
+                  <div className="space-y-3 px-4 pb-4 duration-200 animate-in fade-in slide-in-from-top-1">
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0 font-bold"
+                        title="Añadir otro menú obligatorio (Y)"
+                        onClick={() =>
+                          update(key, (v) => ({
+                            options: [...v.options, { recipeId: "", content: "" }],
+                            joiners: [...v.joiners, "y"],
+                          }))
+                        }
+                      >
+                        Y
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0 font-bold"
+                        title="Añadir menú alternativo (O)"
+                        onClick={() =>
+                          update(key, (v) => ({
+                            options: [...v.options, { recipeId: "", content: "" }],
+                            joiners: [...v.joiners, "o"],
+                          }))
+                        }
+                      >
+                        O
+                      </Button>
+                    </div>
+
+                    {cell.options.map((opt, i) => {
                   const optKey = `${key}-${i}`;
                   const pendingTitle = pendingNew[optKey];
                   const source = options.find((o) => o.id === opt.recipeId);
@@ -1847,7 +1874,9 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                       </div>
                     </div>
                   );
-                })}
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
