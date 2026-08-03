@@ -1705,7 +1705,19 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
       const pdfRows: DietRow[] = [];
       for (const d of DAYS) {
         for (const m of MEALS) {
-          const content = serializeMeal(getCell(`${d.id}-${m.id}`));
+          const cell = getCell(`${d.id}-${m.id}`);
+          // Enriquecer cada alimento con el nombre de la receta como 1ª línea.
+          const enriched = {
+            options: cell.options.map((o) => {
+              const rec = recipes?.find((r) => r.id === o.recipeId);
+              const content = rec
+                ? rec.title + (o.content?.trim() ? `\n${o.content.trim()}` : "")
+                : o.content;
+              return { recipeId: "", content };
+            }),
+            joiners: cell.joiners,
+          };
+          const content = serializeMeal(enriched);
           if (content.trim()) pdfRows.push({ day_of_week: d.id, meal: m.id, content });
         }
       }
