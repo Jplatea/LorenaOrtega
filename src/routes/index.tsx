@@ -1789,17 +1789,27 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
               .join(" · ");
             // Agrupar por alternativas: cada "O" abre una nueva Opción, cada "Y"
             // añade un plato a la opción actual. Base para la vista previa en vivo.
-            const previewGroups: { title: string; body: string }[][] = [[]];
+            // Solo se muestran los platos con contenido (el que se está escribiendo
+            // aparece en cuanto se teclea).
+            const previewGroups: { title: string; body: string; idx: number }[][] = [[]];
             cell.options.forEach((opt, i) => {
               const src = options.find((o) => o.id === opt.recipeId);
-              const item = {
-                title: src ? src.title : nameOf(opt.content).trim(),
-                body: (src ? opt.content : descOf(opt.content)).trim(),
-              };
+              const title = src ? src.title : nameOf(opt.content).trim();
+              const body = (src ? opt.content : descOf(opt.content)).trim();
               if (i > 0 && cell.joiners[i - 1] === "o") previewGroups.push([]);
-              previewGroups[previewGroups.length - 1].push(item);
+              if (title || body) previewGroups[previewGroups.length - 1].push({ title, body, idx: i });
             });
-            const hasAny = cell.options.some((o) => o.recipeId || o.content.trim());
+            const groups = previewGroups.filter((g) => g.length > 0);
+            const hasAny = groups.length > 0;
+            const removeOption = (idx: number) =>
+              update(key, (v) =>
+                v.options.length > 1
+                  ? {
+                      options: v.options.filter((_, x) => x !== idx),
+                      joiners: v.joiners.filter((_, x) => x !== (idx === 0 ? 0 : idx - 1)),
+                    }
+                  : { options: [{ recipeId: "", content: "" }], joiners: [] },
+              );
             return (
               <div key={m.id} className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-elevated)]">
                 <button
@@ -1830,36 +1840,41 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                       </p>
                       {hasAny ? (
                         <div className="space-y-2 text-sm">
-                          {previewGroups.map((group, gi) => (
+                          {groups.map((group, gi) => (
                             <div
                               key={gi}
                               className="rounded-lg bg-card p-2.5 shadow-[var(--shadow-soft)]"
                             >
-                              {previewGroups.length > 1 && (
+                              {groups.length > 1 && (
                                 <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-primary">
                                   Opción {gi + 1}
                                 </p>
                               )}
                               <div className="space-y-1">
                                 {group.map((it, ii) => (
-                                  <div key={ii}>
-                                    {ii > 0 && (
-                                      <p className="mb-0.5 text-[10px] font-semibold italic text-muted-foreground">
-                                        y además
-                                      </p>
-                                    )}
-                                    {it.title || it.body ? (
-                                      <>
-                                        {it.title && (
-                                          <span className="font-semibold text-foreground">{it.title}</span>
-                                        )}
-                                        {it.body && (
-                                          <p className="whitespace-pre-wrap text-muted-foreground">{it.body}</p>
-                                        )}
-                                      </>
-                                    ) : (
-                                      <p className="italic text-muted-foreground/60">(pendiente)</p>
-                                    )}
+                                  <div key={ii} className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                      {ii > 0 && (
+                                        <p className="mb-0.5 text-[10px] font-semibold italic text-muted-foreground">
+                                          y además
+                                        </p>
+                                      )}
+                                      {it.title && (
+                                        <span className="font-semibold text-foreground">{it.title}</span>
+                                      )}
+                                      {it.body && (
+                                        <p className="whitespace-pre-wrap text-muted-foreground">{it.body}</p>
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeOption(it.idx)}
+                                      aria-label="Quitar de la dieta"
+                                      title="Quitar de la dieta"
+                                      className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
                                   </div>
                                 ))}
                               </div>
@@ -1874,6 +1889,9 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                     </div>
 
                     {cell.options.map((opt, i) => {
+                  // Solo se edita la receta actual (la última); las ya añadidas
+                  // viven en el panel de arriba.
+                  if (i !== cell.options.length - 1) return null;
                   const optKey = `${key}-${i}`;
                   const pendingTitle = pendingNew[optKey];
                   const source = options.find((o) => o.id === opt.recipeId);
@@ -2073,20 +2091,21 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                               </Button>
                             </div>
                           )}
-                          {i === 0 && (
+                          {i === cell.options.length - 1 && (
                             <div className="flex items-center justify-end gap-1.5 pt-1">
                               <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
                                 className="h-8 w-8 p-0 font-bold"
-                                title="Añadir otro menú obligatorio (Y)"
-                                onClick={() =>
+                                title="Añadir esta receta y empezar otra obligatoria (Y)"
+                                onClick={() => {
+                                  if (!opt.recipeId && !opt.content.trim()) return;
                                   update(key, (v) => ({
                                     options: [...v.options, { recipeId: "", content: "" }],
                                     joiners: [...v.joiners, "y"],
-                                  }))
-                                }
+                                  }));
+                                }}
                               >
                                 Y
                               </Button>
@@ -2095,13 +2114,14 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                                 variant="outline"
                                 size="sm"
                                 className="h-8 w-8 p-0 font-bold"
-                                title="Añadir menú alternativo (O)"
-                                onClick={() =>
+                                title="Añadir esta receta y empezar una alternativa (O)"
+                                onClick={() => {
+                                  if (!opt.recipeId && !opt.content.trim()) return;
                                   update(key, (v) => ({
                                     options: [...v.options, { recipeId: "", content: "" }],
                                     joiners: [...v.joiners, "o"],
-                                  }))
-                                }
+                                  }));
+                                }}
                               >
                                 O
                               </Button>
