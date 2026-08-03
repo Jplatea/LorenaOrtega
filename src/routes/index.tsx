@@ -27,6 +27,7 @@ import {
   Upload,
   Link as LinkIcon,
   FileText,
+  Save,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -1803,39 +1804,6 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
 
                 {isOpen && (
                   <div className="space-y-3 px-4 pb-4 duration-200 animate-in fade-in slide-in-from-top-1">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 w-8 p-0 font-bold"
-                        title="Añadir otro menú obligatorio (Y)"
-                        onClick={() =>
-                          update(key, (v) => ({
-                            options: [...v.options, { recipeId: "", content: "" }],
-                            joiners: [...v.joiners, "y"],
-                          }))
-                        }
-                      >
-                        Y
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 w-8 p-0 font-bold"
-                        title="Añadir menú alternativo (O)"
-                        onClick={() =>
-                          update(key, (v) => ({
-                            options: [...v.options, { recipeId: "", content: "" }],
-                            joiners: [...v.joiners, "o"],
-                          }))
-                        }
-                      >
-                        O
-                      </Button>
-                    </div>
-
                     {cell.options.map((opt, i) => {
                   const optKey = `${key}-${i}`;
                   const pendingTitle = pendingNew[optKey];
@@ -2005,6 +1973,49 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                                 }}
                               >
                                 Guardar
+                              </Button>
+                            </div>
+                          )}
+                          {i === 0 && (
+                            <div className="flex items-center justify-end gap-1.5 pt-1">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 w-8 p-0 font-bold"
+                                title="Añadir otro menú obligatorio (Y)"
+                                onClick={() =>
+                                  update(key, (v) => ({
+                                    options: [...v.options, { recipeId: "", content: "" }],
+                                    joiners: [...v.joiners, "y"],
+                                  }))
+                                }
+                              >
+                                Y
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 w-8 p-0 font-bold"
+                                title="Añadir menú alternativo (O)"
+                                onClick={() =>
+                                  update(key, (v) => ({
+                                    options: [...v.options, { recipeId: "", content: "" }],
+                                    joiners: [...v.joiners, "o"],
+                                  }))
+                                }
+                              >
+                                O
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                title="Guardar y colapsar esta comida"
+                                onClick={() => setOpenMeal(null)}
+                              >
+                                <Save className="h-4 w-4" />
                               </Button>
                             </div>
                           )}
