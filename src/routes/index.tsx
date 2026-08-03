@@ -1850,21 +1850,19 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                                   Opción {gi + 1}
                                 </p>
                               )}
-                              <div className="space-y-1">
+                              <div className="space-y-1.5">
                                 {group.map((it, ii) => (
                                   <div key={ii} className="flex items-start justify-between gap-2">
-                                    <div className="min-w-0">
-                                      {ii > 0 && (
-                                        <p className="mb-0.5 text-[10px] font-semibold italic text-muted-foreground">
-                                          y además
-                                        </p>
-                                      )}
-                                      {it.title && (
-                                        <span className="font-semibold text-foreground">{it.title}</span>
-                                      )}
-                                      {it.body && (
-                                        <p className="whitespace-pre-wrap text-muted-foreground">{it.body}</p>
-                                      )}
+                                    <div className="flex min-w-0 gap-2">
+                                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/60" />
+                                      <div className="min-w-0">
+                                        {it.title && (
+                                          <span className="font-semibold text-foreground">{it.title}</span>
+                                        )}
+                                        {it.body && (
+                                          <p className="whitespace-pre-wrap text-muted-foreground">{it.body}</p>
+                                        )}
+                                      </div>
                                     </div>
                                     <button
                                       type="button"
@@ -1906,22 +1904,13 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                   return (
                     <div key={i} className="space-y-2">
                       {i > 0 && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-primary">
                           <div className="h-px flex-1 bg-border" />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              update(key, (v) => {
-                                const joiners = [...v.joiners];
-                                joiners[i - 1] = joiners[i - 1] === "y" ? "o" : "y";
-                                return { ...v, joiners };
-                              })
-                            }
-                            className="rounded-full bg-primary-soft px-3 py-0.5 text-xs font-bold text-foreground"
-                            title="Cambiar entre Y / O"
-                          >
-                            {cell.joiners[i - 1] === "y" ? "Y" : "O"}
-                          </button>
+                          <span>
+                            {cell.joiners[i - 1] === "o"
+                              ? "Nueva alternativa (opción)"
+                              : "Otro alimento de esta opción"}
+                          </span>
                           <div className="h-px flex-1 bg-border" />
                         </div>
                       )}
@@ -2092,13 +2081,12 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                             </div>
                           )}
                           {i === cell.options.length - 1 && (
-                            <div className="flex items-center justify-end gap-1.5 pt-1">
+                            <div className="flex flex-wrap items-center gap-2 pt-1">
                               <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                className="h-8 w-8 p-0 font-bold"
-                                title="Añadir esta receta y empezar otra obligatoria (Y)"
+                                title="Este alimento se toma junto a los anteriores de la misma opción"
                                 onClick={() => {
                                   if (!opt.recipeId && !opt.content.trim()) return;
                                   update(key, (v) => ({
@@ -2107,14 +2095,13 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                                   }));
                                 }}
                               >
-                                Y
+                                <Plus className="h-4 w-4" /> Añadir alimento
                               </Button>
                               <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                className="h-8 w-8 p-0 font-bold"
-                                title="Añadir esta receta y empezar una alternativa (O)"
+                                title="Crea una opción alternativa que el paciente puede elegir en su lugar"
                                 onClick={() => {
                                   if (!opt.recipeId && !opt.content.trim()) return;
                                   update(key, (v) => ({
@@ -2123,12 +2110,12 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                                   }));
                                 }}
                               >
-                                O
+                                <Plus className="h-4 w-4" /> Añadir alternativa
                               </Button>
                               <Button
                                 type="button"
                                 size="sm"
-                                className="h-8 w-8 p-0"
+                                className="ml-auto"
                                 title="Guardar la dieta y colapsar esta comida"
                                 disabled={saving}
                                 onClick={async () => {
@@ -2136,7 +2123,13 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                                   setOpenMeal(null);
                                 }}
                               >
-                                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                {saving ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <>
+                                    <Save className="h-4 w-4" /> Guardar
+                                  </>
+                                )}
                               </Button>
                             </div>
                           )}
