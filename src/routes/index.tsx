@@ -1787,6 +1787,19 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
               })
               .filter(Boolean)
               .join(" · ");
+            // Agrupar por alternativas: cada "O" abre una nueva Opción, cada "Y"
+            // añade un plato a la opción actual. Base para la vista previa en vivo.
+            const previewGroups: { title: string; body: string }[][] = [[]];
+            cell.options.forEach((opt, i) => {
+              const src = options.find((o) => o.id === opt.recipeId);
+              const item = {
+                title: src ? src.title : nameOf(opt.content).trim(),
+                body: (src ? opt.content : descOf(opt.content)).trim(),
+              };
+              if (i > 0 && cell.joiners[i - 1] === "o") previewGroups.push([]);
+              previewGroups[previewGroups.length - 1].push(item);
+            });
+            const hasAny = cell.options.some((o) => o.recipeId || o.content.trim());
             return (
               <div key={m.id} className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-elevated)]">
                 <button
@@ -1810,6 +1823,56 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
 
                 {isOpen && (
                   <div className="space-y-3 px-4 pb-4 duration-200 animate-in fade-in slide-in-from-top-1">
+                    {/* Vista previa en vivo de la dieta de esta comida */}
+                    <div className="rounded-xl bg-secondary/40 p-3">
+                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Dieta de {m.label.toLowerCase()}
+                      </p>
+                      {hasAny ? (
+                        <div className="space-y-2 text-sm">
+                          {previewGroups.map((group, gi) => (
+                            <div
+                              key={gi}
+                              className="rounded-lg bg-card p-2.5 shadow-[var(--shadow-soft)]"
+                            >
+                              {previewGroups.length > 1 && (
+                                <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-primary">
+                                  Opción {gi + 1}
+                                </p>
+                              )}
+                              <div className="space-y-1">
+                                {group.map((it, ii) => (
+                                  <div key={ii}>
+                                    {ii > 0 && (
+                                      <p className="mb-0.5 text-[10px] font-semibold italic text-muted-foreground">
+                                        y además
+                                      </p>
+                                    )}
+                                    {it.title || it.body ? (
+                                      <>
+                                        {it.title && (
+                                          <span className="font-semibold text-foreground">{it.title}</span>
+                                        )}
+                                        {it.body && (
+                                          <p className="whitespace-pre-wrap text-muted-foreground">{it.body}</p>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <p className="italic text-muted-foreground/60">(pendiente)</p>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm italic text-muted-foreground/70">
+                          Aún nada. Elige una receta o escribe un producto y se irá escribiendo aquí.
+                        </p>
+                      )}
+                    </div>
+
                     {cell.options.map((opt, i) => {
                   const optKey = `${key}-${i}`;
                   const pendingTitle = pendingNew[optKey];
