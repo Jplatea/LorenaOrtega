@@ -1853,16 +1853,18 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                               <div className="space-y-1.5">
                                 {group.map((it, ii) => (
                                   <div key={ii} className="flex items-start justify-between gap-2">
-                                    <div className="flex min-w-0 gap-2">
-                                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/60" />
-                                      <div className="min-w-0">
+                                    <div className="flex min-w-0 flex-1 flex-col gap-x-4 gap-y-0.5 sm:flex-row">
+                                      <div className="flex min-w-0 items-start gap-2 sm:w-44 sm:shrink-0">
+                                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/60" />
                                         {it.title && (
                                           <span className="font-semibold text-foreground">{it.title}</span>
                                         )}
-                                        {it.body && (
-                                          <p className="whitespace-pre-wrap text-muted-foreground">{it.body}</p>
-                                        )}
                                       </div>
+                                      {it.body && (
+                                        <p className="whitespace-pre-wrap pl-3.5 text-muted-foreground sm:flex-1 sm:pl-0">
+                                          {it.body}
+                                        </p>
+                                      )}
                                     </div>
                                     <button
                                       type="button"
@@ -1955,23 +1957,6 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                                 });
                               }}
                             />
-                            {cell.options.length > 1 && (
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-9 w-9 shrink-0 p-0 text-destructive"
-                                title="Quitar este menú"
-                                onClick={() =>
-                                  update(key, (v) => ({
-                                    options: v.options.filter((_, idx) => idx !== i),
-                                    joiners: v.joiners.filter((_, idx) => idx !== (i === 0 ? 0 : i - 1)),
-                                  }))
-                                }
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
                           </div>
                           {isCustom && (
                             <span className="inline-block rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium">
