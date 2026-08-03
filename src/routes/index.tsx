@@ -2012,10 +2012,14 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                                 type="button"
                                 size="sm"
                                 className="h-8 w-8 p-0"
-                                title="Guardar y colapsar esta comida"
-                                onClick={() => setOpenMeal(null)}
+                                title="Guardar la dieta y colapsar esta comida"
+                                disabled={saving}
+                                onClick={async () => {
+                                  await save();
+                                  setOpenMeal(null);
+                                }}
                               >
-                                <Save className="h-4 w-4" />
+                                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                               </Button>
                             </div>
                           )}
