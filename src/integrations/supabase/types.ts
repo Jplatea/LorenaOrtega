@@ -55,6 +55,42 @@ export type Database = {
           },
         ]
       }
+      resources: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          file_path: string | null
+          id: string
+          kind: "file" | "url"
+          mime_type: string | null
+          size_bytes: number | null
+          title: string
+          url: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          file_path?: string | null
+          id?: string
+          kind: "file" | "url"
+          mime_type?: string | null
+          size_bytes?: number | null
+          title: string
+          url?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          file_path?: string | null
+          id?: string
+          kind?: "file" | "url"
+          mime_type?: string | null
+          size_bytes?: number | null
+          title?: string
+          url?: string | null
+        }
+        Relationships: []
+      }
       patient_documents: {
         Row: {
           category: Database["public"]["Enums"]["document_category"]

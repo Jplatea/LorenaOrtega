@@ -1168,7 +1168,7 @@ function RecursosPanel() {
   const [urlTitle, setUrlTitle] = useState("");
   const [urlValue, setUrlValue] = useState("");
 
-  const table = () => (supabase as unknown as { from: (t: string) => any }).from("resources");
+  const table = () => supabase.from("resources");
 
   const { data: resources, isLoading } = useQuery({
     queryKey: ["recursos-list"],
