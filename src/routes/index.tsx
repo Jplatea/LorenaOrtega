@@ -41,7 +41,9 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { createPatient } from "@/lib/patients.functions";
 import { MEALS, DAYS } from "@/lib/domain";
-import { ensureIngredients } from "@/lib/recipes";
+import { ensureIngredients, renderIngredients } from "@/lib/recipes";
+import { parseMeal, serializeMeal, type MealValue } from "@/lib/meal-options";
+import { RecipeCombobox } from "@/components/recipe-combobox";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -166,7 +168,7 @@ function LandingPage() {
 
       {/* Login in-page + panel de 3 tarjetas (sin cambiar de página) */}
       {(showLogin || authed) && (
-        <div className="fixed inset-x-0 bottom-0 top-16 z-40 flex items-start justify-center overflow-y-auto bg-background/95 px-4 py-12 backdrop-blur-xl duration-500 animate-in fade-in sm:items-center">
+        <div className="fixed inset-x-0 bottom-0 top-16 z-40 flex items-start justify-center overflow-y-auto bg-background/95 px-4 py-12 backdrop-blur-xl duration-500 animate-in fade-in">
           {authed ? (
             <DashboardCards />
           ) : (
@@ -1411,12 +1413,66 @@ function DietasPanel() {
   );
 }
 
+type RecipeOpt = {
+  id: string;
+  meal: string;
+  title: string;
+  content: string;
+  ingredients: { name: string; amount: string }[];
+};
+
+function AutoResizeTextarea(props: React.ComponentProps<typeof Textarea>) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [props.value]);
+  return (
+    <Textarea
+      {...props}
+      ref={ref}
+      rows={1}
+      className={cn("min-h-0 resize-none overflow-hidden bg-card shadow-[var(--shadow-soft)]", props.className)}
+      onChange={(e) => {
+        e.target.style.height = "auto";
+        e.target.style.height = `${e.target.scrollHeight}px`;
+        props.onChange?.(e);
+      }}
+    />
+  );
+}
+
 function DietEditor({ patientId, patientName, onBack }: { patientId: string; patientName: string; onBack: () => void }) {
   const qc = useQueryClient();
   const [week, setWeek] = useState(1);
   const [activeDay, setActiveDay] = useState<number>(DAYS[0].id);
-  const [rows, setRows] = useState<Record<string, string>>({});
+  const [rows, setRows] = useState<Record<string, MealValue>>({});
   const [saving, setSaving] = useState(false);
+  const [pendingNew, setPendingNew] = useState<Record<string, string>>({});
+
+  const { data: recipes } = useQuery({
+    queryKey: ["recipes-diet"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("recipes")
+        .select("id, meal, title, content, ingredients")
+        .order("title");
+      return (data ?? []).map((r) => ({
+        id: r.id,
+        meal: r.meal as string,
+        title: r.title,
+        content: r.content || renderIngredients(ensureIngredients(r.ingredients)),
+        ingredients: ensureIngredients(r.ingredients),
+      })) as RecipeOpt[];
+    },
+  });
+
+  const recipesByMeal = (recipes ?? []).reduce<Record<string, RecipeOpt[]>>((acc, r) => {
+    (acc[r.meal] ||= []).push(r);
+    return acc;
+  }, {});
 
   const { data, isLoading } = useQuery({
     queryKey: ["diet", patientId, week],
@@ -1431,21 +1487,34 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
   });
 
   useEffect(() => {
-    const map: Record<string, string> = {};
-    for (const r of data ?? []) map[`${r.day_of_week}-${r.meal}`] = r.content ?? "";
+    if (!recipes) return;
+    const map: Record<string, MealValue> = {};
+    for (const r of data ?? []) {
+      map[`${r.day_of_week}-${r.meal}`] = parseMeal(
+        r.content ?? "",
+        (c) => recipes.find((rec) => rec.meal === r.meal && rec.content === c)?.id ?? "",
+      );
+    }
     setRows(map);
-  }, [data]);
+  }, [data, recipes]);
+
+  function getCell(key: string): MealValue {
+    return rows[key] ?? { options: [{ recipeId: "", content: "" }], joiners: [] };
+  }
+  function update(key: string, fn: (v: MealValue) => MealValue) {
+    setRows((r) => ({ ...r, [key]: fn(r[key] ?? { options: [{ recipeId: "", content: "" }], joiners: [] }) }));
+  }
 
   async function save() {
     setSaving(true);
-    const upserts: { patient_id: string; week_number: number; day_of_week: number; meal: string; content: string }[] = [];
+    const payload: { patient_id: string; week_number: number; day_of_week: number; meal: string; content: string }[] = [];
     const deletes: Promise<unknown>[] = [];
     for (const d of DAYS) {
       for (const m of MEALS) {
         const key = `${d.id}-${m.id}`;
-        const content = (rows[key] ?? "").trim();
-        if (content) {
-          upserts.push({ patient_id: patientId, week_number: week, day_of_week: d.id, meal: m.id, content });
+        const content = rows[key] ? serializeMeal(rows[key]) : "";
+        if (content.trim()) {
+          payload.push({ patient_id: patientId, week_number: week, day_of_week: d.id, meal: m.id, content });
         } else {
           deletes.push(
             (async () => {
@@ -1462,10 +1531,10 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
       }
     }
     await Promise.all(deletes);
-    if (upserts.length) {
+    if (payload.length) {
       const { error } = await supabase
         .from("diets")
-        .upsert(upserts as never, { onConflict: "patient_id,week_number,day_of_week,meal" });
+        .upsert(payload as never, { onConflict: "patient_id,week_number,day_of_week,meal" });
       if (error) {
         setSaving(false);
         toast.error("No se pudo guardar", { description: error.message });
@@ -1477,21 +1546,20 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
     qc.invalidateQueries({ queryKey: ["diet", patientId, week] });
   }
 
+  function dayFilled(dayId: number) {
+    return MEALS.some((m) => serializeMeal(getCell(`${dayId}-${m.id}`)).trim());
+  }
+
   return (
     <div className="space-y-4">
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition hover:text-foreground"
-      >
-        <ChevronRight className="h-4 w-4 rotate-180" /> Volver a clientes
-      </button>
-
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-sm text-muted-foreground">Dieta de</div>
-          <div className="text-lg font-semibold text-foreground">{patientName}</div>
-        </div>
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground transition hover:text-primary"
+        >
+          <ChevronRight className="h-4 w-4 rotate-180 text-muted-foreground" /> {patientName}
+        </button>
         <div className="flex items-center gap-2">
           <Label htmlFor="diet-week" className="text-sm">
             Semana
@@ -1504,62 +1572,287 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
             onChange={(e) => setWeek(Math.max(1, Number(e.target.value) || 1))}
             className="w-20 bg-card shadow-[var(--shadow-elevated)]"
           />
+          <Button size="sm" onClick={save} disabled={saving}>
+            {saving ? (
+              <LoadingBar />
+            ) : (
+              <>
+                <Plus className="h-4 w-4" /> Guardar
+              </>
+            )}
+          </Button>
         </div>
       </div>
 
+      {(recipes?.length ?? 0) === 0 && (
+        <div className="rounded-2xl bg-secondary/50 p-4 text-sm text-foreground">
+          Aún no hay recetas. Créalas en la tarjeta “Recetas” para poder asignarlas.
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
-        {DAYS.map((d) => (
-          <button
-            key={d.id}
-            type="button"
-            onClick={() => setActiveDay(d.id)}
-            className={cn(
-              "rounded-full px-4 py-2 text-sm font-medium transition",
-              activeDay === d.id
-                ? "bg-primary text-primary-foreground shadow-[var(--shadow-soft)]"
-                : "bg-card text-foreground shadow-[var(--shadow-elevated)] hover:opacity-90",
-            )}
-          >
-            {d.short}
-          </button>
-        ))}
+        {DAYS.map((d) => {
+          const active = activeDay === d.id;
+          return (
+            <button
+              key={d.id}
+              type="button"
+              onClick={() => setActiveDay(d.id)}
+              className={cn(
+                "rounded-full px-4 py-2 text-sm font-medium transition",
+                active
+                  ? "bg-primary text-primary-foreground shadow-[var(--shadow-soft)]"
+                  : "bg-card text-foreground shadow-[var(--shadow-elevated)] hover:opacity-90",
+              )}
+            >
+              {d.label}
+              {dayFilled(d.id) && (
+                <span
+                  className={cn(
+                    "ml-2 inline-block h-1.5 w-1.5 rounded-full align-middle",
+                    active ? "bg-primary-foreground" : "bg-primary",
+                  )}
+                />
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {isLoading ? (
         <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {MEALS.map((m) => {
             const key = `${activeDay}-${m.id}`;
+            const cell = getCell(key);
+            // Mostrar TODAS las recetas en cada comida (las de esta comida primero),
+            // para que el desplegable siempre lea de la base de datos aunque la
+            // receta esté clasificada en otra comida.
+            const options = [
+              ...(recipesByMeal[m.id] ?? []),
+              ...(recipes ?? []).filter((r) => r.meal !== m.id),
+            ];
             return (
-              <div key={m.id} className="space-y-1.5">
-                <Label className="flex items-center gap-2">
-                  <span>{m.emoji}</span> {m.label}
-                </Label>
-                <Textarea
-                  value={rows[key] ?? ""}
-                  onChange={(e) => setRows((p) => ({ ...p, [key]: e.target.value }))}
-                  rows={2}
-                  placeholder="Menú, raciones, indicaciones…"
-                  className="bg-card shadow-[var(--shadow-elevated)]"
-                />
+              <div key={m.id} className="space-y-3 rounded-2xl bg-card p-4 shadow-[var(--shadow-elevated)]">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-sm font-semibold">{m.label}</Label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-8 p-0 font-bold"
+                      title="Añadir otro menú obligatorio (Y)"
+                      onClick={() =>
+                        update(key, (v) => ({
+                          options: [...v.options, { recipeId: "", content: "" }],
+                          joiners: [...v.joiners, "y"],
+                        }))
+                      }
+                    >
+                      Y
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-8 p-0 font-bold"
+                      title="Añadir menú alternativo (O)"
+                      onClick={() =>
+                        update(key, (v) => ({
+                          options: [...v.options, { recipeId: "", content: "" }],
+                          joiners: [...v.joiners, "o"],
+                        }))
+                      }
+                    >
+                      O
+                    </Button>
+                  </div>
+                </div>
+
+                {cell.options.map((opt, i) => {
+                  const optKey = `${key}-${i}`;
+                  const pendingTitle = pendingNew[optKey];
+                  const source = options.find((o) => o.id === opt.recipeId);
+                  const isCustom = !!pendingTitle || (!!opt.content.trim() && (!source || source.content !== opt.content));
+                  const clearPending = () =>
+                    setPendingNew((p) => {
+                      if (!(optKey in p)) return p;
+                      const next = { ...p };
+                      delete next[optKey];
+                      return next;
+                    });
+                  return (
+                    <div key={i} className="space-y-2">
+                      {i > 0 && (
+                        <div className="flex items-center gap-2">
+                          <div className="h-px flex-1 bg-border" />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              update(key, (v) => {
+                                const joiners = [...v.joiners];
+                                joiners[i - 1] = joiners[i - 1] === "y" ? "o" : "y";
+                                return { ...v, joiners };
+                              })
+                            }
+                            className="rounded-full bg-primary-soft px-3 py-0.5 text-xs font-bold text-foreground"
+                            title="Cambiar entre Y / O"
+                          >
+                            {cell.joiners[i - 1] === "y" ? "Y" : "O"}
+                          </button>
+                          <div className="h-px flex-1 bg-border" />
+                        </div>
+                      )}
+                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[240px_1fr]">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <RecipeCombobox
+                              recipes={options}
+                              value={opt.recipeId}
+                              isCustom={isCustom}
+                              customLabel={pendingTitle ?? "Personalizada"}
+                              onClear={() => {
+                                clearPending();
+                                update(key, (v) => {
+                                  const next = [...v.options];
+                                  next[i] = { recipeId: "", content: "" };
+                                  return { ...v, options: next };
+                                });
+                              }}
+                              onSelect={(rec) => {
+                                clearPending();
+                                update(key, (v) => {
+                                  const next = [...v.options];
+                                  next[i] = { recipeId: rec.id, content: rec.content };
+                                  return { ...v, options: next };
+                                });
+                              }}
+                              onUseLocal={(title) => {
+                                clearPending();
+                                update(key, (v) => {
+                                  const next = [...v.options];
+                                  next[i] = { recipeId: "", content: title };
+                                  return { ...v, options: next };
+                                });
+                              }}
+                              onCreate={(title) => {
+                                setPendingNew((p) => ({ ...p, [optKey]: title }));
+                                update(key, (v) => {
+                                  const next = [...v.options];
+                                  next[i] = { recipeId: "", content: "" };
+                                  return { ...v, options: next };
+                                });
+                              }}
+                            />
+                            {cell.options.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-9 w-9 shrink-0 p-0 text-destructive"
+                                title="Quitar este menú"
+                                onClick={() =>
+                                  update(key, (v) => ({
+                                    options: v.options.filter((_, idx) => idx !== i),
+                                    joiners: v.joiners.filter((_, idx) => idx !== (i === 0 ? 0 : i - 1)),
+                                  }))
+                                }
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                          {isCustom && (
+                            <span className="inline-block rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium">
+                              Personalizada
+                            </span>
+                          )}
+                          {source && source.content !== opt.content && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                update(key, (v) => {
+                                  const next = [...v.options];
+                                  next[i] = { recipeId: source.id, content: source.content };
+                                  return { ...v, options: next };
+                                })
+                              }
+                            >
+                              <Pencil className="h-3.5 w-3.5" /> Restaurar original
+                            </Button>
+                          )}
+                        </div>
+                        <div className="space-y-2">
+                          <AutoResizeTextarea
+                            value={opt.content}
+                            onChange={(e) =>
+                              update(key, (v) => {
+                                const next = [...v.options];
+                                next[i] = { recipeId: "", content: e.target.value };
+                                return { ...v, options: next };
+                              })
+                            }
+                            placeholder="Ingredientes, cantidades y preparación…"
+                          />
+                          {pendingTitle && (
+                            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary-soft/60 px-3 py-2">
+                              <p className="text-xs text-foreground/80">
+                                Añade el contenido y pulsa <strong>Guardar</strong> para almacenar «{pendingTitle}» en la base de datos.
+                              </p>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={async () => {
+                                  const content = opt.content.trim();
+                                  const { data: u } = await supabase.auth.getUser();
+                                  const { data: created, error } = await supabase
+                                    .from("recipes")
+                                    .insert({
+                                      meal: m.id,
+                                      title: pendingTitle,
+                                      content,
+                                      ingredients: content
+                                        ? content
+                                            .split("\n")
+                                            .filter((l) => l.trim())
+                                            .map((l) => ({ name: l.trim(), amount: "" }))
+                                        : [],
+                                      created_by: u.user?.id ?? null,
+                                    } as never)
+                                    .select("id")
+                                    .single();
+                                  if (error || !created) {
+                                    toast.error("No se pudo guardar la receta");
+                                    return;
+                                  }
+                                  await qc.invalidateQueries({ queryKey: ["recipes-diet"] });
+                                  toast.success("Receta añadida a la base de datos");
+                                  clearPending();
+                                  update(key, (v) => {
+                                    const next = [...v.options];
+                                    next[i] = { recipeId: created.id, content };
+                                    return { ...v, options: next };
+                                  });
+                                }}
+                              >
+                                Guardar
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
         </div>
       )}
-
-      <div className="flex justify-end pt-1">
-        <Button onClick={save} disabled={saving || isLoading}>
-          {saving ? (
-            <LoadingBar />
-          ) : (
-            <>
-              <Plus className="h-4 w-4" /> Guardar dieta
-            </>
-          )}
-        </Button>
-      </div>
     </div>
   );
 }
