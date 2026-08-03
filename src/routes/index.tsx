@@ -1877,7 +1877,7 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
                               recipes={options}
                               value={opt.recipeId}
                               isCustom={isCustom}
-                              customLabel={pendingTitle ?? "Personalizada"}
+                              customLabel={pendingTitle ?? (opt.content.split("\n")[0].trim() || "Personalizada")}
                               onClear={() => {
                                 clearPending();
                                 update(key, (v) => {
