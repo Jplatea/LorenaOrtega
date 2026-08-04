@@ -563,7 +563,9 @@ function LandingPage() {
                 title="Clínica"
                 items={[
                   { label: "Contacto", href: "#contacto" },
-                  { label: "Privacidad", href: "#contacto" },
+                  { label: "Aviso legal", to: "/aviso-legal" },
+                  { label: "Privacidad", to: "/privacidad" },
+                  { label: "Cookies", to: "/cookies" },
                 ]}
               />
             </div>

@@ -12,6 +12,9 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AvisoLegalRouteImport } from './routes/aviso-legal'
+import { Route as CookiesRouteImport } from './routes/cookies'
+import { Route as PrivacidadRouteImport } from './routes/privacidad'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AuthenticatedAccountRouteImport } from './routes/_authenticated/account'
 import { Route as AuthenticatedChangePasswordRouteImport } from './routes/_authenticated/change-password'
@@ -37,6 +40,21 @@ const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
   path: '/auth',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AvisoLegalRoute = AvisoLegalRouteImport.update({
+  id: '/aviso-legal',
+  path: '/aviso-legal',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CookiesRoute = CookiesRouteImport.update({
+  id: '/cookies',
+  path: '/cookies',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacidadRoute = PrivacidadRouteImport.update({
+  id: '/privacidad',
+  path: '/privacidad',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SetupRoute = SetupRouteImport.update({
@@ -111,6 +129,9 @@ const AuthenticatedPatientDayDayRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/aviso-legal': typeof AvisoLegalRoute
+  '/cookies': typeof CookiesRoute
+  '/privacidad': typeof PrivacidadRoute
   '/setup': typeof SetupRoute
   '/account': typeof AuthenticatedAccountRoute
   '/change-password': typeof AuthenticatedChangePasswordRoute
@@ -127,6 +148,9 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/aviso-legal': typeof AvisoLegalRoute
+  '/cookies': typeof CookiesRoute
+  '/privacidad': typeof PrivacidadRoute
   '/setup': typeof SetupRoute
   '/account': typeof AuthenticatedAccountRoute
   '/change-password': typeof AuthenticatedChangePasswordRoute
@@ -145,6 +169,9 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/aviso-legal': typeof AvisoLegalRoute
+  '/cookies': typeof CookiesRoute
+  '/privacidad': typeof PrivacidadRoute
   '/setup': typeof SetupRoute
   '/_authenticated/account': typeof AuthenticatedAccountRoute
   '/_authenticated/change-password': typeof AuthenticatedChangePasswordRoute
@@ -163,6 +190,9 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/auth'
+    | '/aviso-legal'
+    | '/cookies'
+    | '/privacidad'
     | '/setup'
     | '/account'
     | '/change-password'
@@ -179,6 +209,9 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/auth'
+    | '/aviso-legal'
+    | '/cookies'
+    | '/privacidad'
     | '/setup'
     | '/account'
     | '/change-password'
@@ -196,6 +229,9 @@ export interface FileRouteTypes {
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/aviso-legal'
+    | '/cookies'
+    | '/privacidad'
     | '/setup'
     | '/_authenticated/account'
     | '/_authenticated/change-password'
@@ -214,6 +250,9 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  AvisoLegalRoute: typeof AvisoLegalRoute
+  CookiesRoute: typeof CookiesRoute
+  PrivacidadRoute: typeof PrivacidadRoute
   SetupRoute: typeof SetupRoute
 }
 
@@ -238,6 +277,27 @@ declare module '@tanstack/react-router' {
       path: '/auth'
       fullPath: '/auth'
       preLoaderRoute: typeof AuthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/aviso-legal': {
+      id: '/aviso-legal'
+      path: '/aviso-legal'
+      fullPath: '/aviso-legal'
+      preLoaderRoute: typeof AvisoLegalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cookies': {
+      id: '/cookies'
+      path: '/cookies'
+      fullPath: '/cookies'
+      preLoaderRoute: typeof CookiesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacidad': {
+      id: '/privacidad'
+      path: '/privacidad'
+      fullPath: '/privacidad'
+      preLoaderRoute: typeof PrivacidadRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/setup': {
@@ -362,6 +422,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  AvisoLegalRoute: AvisoLegalRoute,
+  CookiesRoute: CookiesRoute,
+  PrivacidadRoute: PrivacidadRoute,
   SetupRoute: SetupRoute,
 }
 export const routeTree = rootRouteImport
