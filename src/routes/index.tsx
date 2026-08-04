@@ -1069,12 +1069,19 @@ function DashboardCards() {
 
   return (
     <div className="w-full max-w-6xl duration-500 animate-in fade-in zoom-in-95">
-      <div className="text-center">
-        <h2 className="text-3xl font-semibold tracking-tight text-foreground">¿Qué quieres gestionar?</h2>
-        <p className="mt-2 text-sm text-muted-foreground">Elige una sección para empezar.</p>
-      </div>
+      {expanded === null && (
+        <div className="text-center duration-300 animate-in fade-in">
+          <h2 className="text-3xl font-semibold tracking-tight text-foreground">¿Qué quieres gestionar?</h2>
+          <p className="mt-2 text-sm text-muted-foreground">Elige una sección para empezar.</p>
+        </div>
+      )}
 
-      <div className="mt-10 flex flex-col gap-4 md:flex-row md:items-stretch">
+      <div
+        className={cn(
+          "flex flex-col gap-4 md:flex-row md:items-stretch",
+          expanded === null ? "mt-10" : "mt-0",
+        )}
+      >
         {DASH_CARDS.map((c) => {
           const isOpen = expanded === c.label;
           const isCollapsed = expanded !== null && !isOpen;
