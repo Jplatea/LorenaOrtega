@@ -90,6 +90,7 @@ export type Database = {
       }
       resources: {
         Row: {
+          category: string
           created_at: string
           created_by: string | null
           file_path: string | null
@@ -101,6 +102,7 @@ export type Database = {
           url: string | null
         }
         Insert: {
+          category?: string
           created_at?: string
           created_by?: string | null
           file_path?: string | null
@@ -112,6 +114,7 @@ export type Database = {
           url?: string | null
         }
         Update: {
+          category?: string
           created_at?: string
           created_by?: string | null
           file_path?: string | null

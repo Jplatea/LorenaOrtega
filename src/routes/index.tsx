@@ -211,7 +211,14 @@ function LandingPage() {
             </p>
           </Reveal>
           <Reveal delay={240}>
-            <HeroLeadForm />
+            <div className="mt-10">
+              <Button
+                size="lg"
+                onClick={() => document.getElementById("contacto")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              >
+                Reservar consulta <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
           </Reveal>
         </div>
       </section>
@@ -747,60 +754,6 @@ const CONTACT = {
   email: "hola@lorenaortega.es",
   location: "Consulta presencial y online",
 };
-
-function HeroLeadForm() {
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "loading" | "done">("idle");
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    const value = email.trim();
-    if (!value) return;
-    setStatus("loading");
-    const { error } = await supabase.from("leads").insert({ email: value, source: "hero" });
-    if (error) {
-      setStatus("idle");
-      toast.error("No se pudo enviar", { description: "Inténtalo de nuevo en un momento." });
-      return;
-    }
-    setStatus("done");
-  }
-  if (status === "done") {
-    return (
-      <div className="mx-auto mt-10 flex max-w-xl items-center justify-center gap-3 rounded-3xl border border-primary/30 bg-primary-soft/60 px-6 py-5 text-sm font-medium text-foreground shadow-[var(--shadow-float)] sm:rounded-full">
-        <Check className="h-5 w-5 shrink-0 text-primary" />
-        ¡Gracias! Hemos recibido tu solicitud y te contactaremos muy pronto.
-      </div>
-    );
-  }
-  return (
-    <form
-      onSubmit={submit}
-      className="mx-auto mt-10 flex w-full max-w-xl flex-col gap-2 rounded-3xl border border-border bg-card p-2 shadow-[var(--shadow-float)] sm:flex-row sm:items-center sm:rounded-full"
-    >
-      <label htmlFor="hero-email" className="sr-only">
-        Tu email
-      </label>
-      <input
-        id="hero-email"
-        type="email"
-        required
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        placeholder="tucorreo@email.com"
-        className="min-w-0 flex-1 rounded-full bg-transparent px-5 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-      />
-      <Button type="submit" size="lg" disabled={status === "loading"} className="shrink-0 sm:h-11">
-        {status === "loading" ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <>
-            Reservar consulta <ArrowRight className="h-4 w-4" />
-          </>
-        )}
-      </Button>
-    </form>
-  );
-}
 
 function ContactMethod({
   icon: Icon,
@@ -1617,7 +1570,10 @@ type ResourceItem = {
   file_path: string | null;
   mime_type: string | null;
   size_bytes: number | null;
+  category: string;
 };
+
+const RESOURCE_CATEGORIES = ["Guías", "Analíticas", "Plantillas", "Educación", "Otros"] as const;
 
 function RecursosPanel() {
   const qc = useQueryClient();
@@ -1626,14 +1582,18 @@ function RecursosPanel() {
   const [addingUrl, setAddingUrl] = useState(false);
   const [urlTitle, setUrlTitle] = useState("");
   const [urlValue, setUrlValue] = useState("");
+  const [search, setSearch] = useState("");
+  const [activeCat, setActiveCat] = useState<string>("Todas");
+  const [preview, setPreview] = useState<{ title: string; url: string; mime: string | null } | null>(null);
 
+  const newCat = () => (activeCat === "Todas" ? "Otros" : activeCat);
   const table = () => supabase.from("resources");
 
   const { data: resources, isLoading } = useQuery({
     queryKey: ["recursos-list"],
     queryFn: async () => {
       const { data } = await table()
-        .select("id, kind, title, url, file_path, mime_type, size_bytes")
+        .select("id, kind, title, url, file_path, mime_type, size_bytes, category")
         .order("created_at", { ascending: false });
       return (data ?? []) as ResourceItem[];
     },
@@ -1660,6 +1620,7 @@ function RecursosPanel() {
       file_path: path,
       mime_type: file.type || null,
       size_bytes: file.size,
+      category: newCat(),
       created_by: u.user?.id ?? null,
     });
     setUploading(false);
@@ -1682,6 +1643,7 @@ function RecursosPanel() {
       kind: "url",
       title: urlTitle.trim(),
       url: urlValue.trim(),
+      category: newCat(),
       created_by: u.user?.id ?? null,
     });
     if (error) {
@@ -1701,12 +1663,17 @@ function RecursosPanel() {
       return;
     }
     if (r.kind === "file" && r.file_path) {
-      const { data, error } = await supabase.storage.from("resources").createSignedUrl(r.file_path, 60);
+      const { data, error } = await supabase.storage.from("resources").createSignedUrl(r.file_path, 300);
       if (error || !data?.signedUrl) {
         toast.error("No se pudo abrir el archivo");
         return;
       }
-      window.open(data.signedUrl, "_blank", "noopener");
+      const mime = r.mime_type ?? "";
+      if (mime.startsWith("image/") || mime === "application/pdf") {
+        setPreview({ title: r.title, url: data.signedUrl, mime });
+      } else {
+        window.open(data.signedUrl, "_blank", "noopener");
+      }
     }
   }
 
@@ -1721,11 +1688,17 @@ function RecursosPanel() {
     refresh();
   }
 
+  const q = search.trim().toLowerCase();
+  const filtered = (resources ?? []).filter(
+    (r) => (activeCat === "Todas" || r.category === activeCat) && (!q || r.title.toLowerCase().includes(q)),
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm text-muted-foreground">
-          {isLoading ? "Cargando…" : `${resources?.length ?? 0} recursos`}
+          {isLoading ? "Cargando…" : `${filtered.length} recurso${filtered.length === 1 ? "" : "s"}`}
+          {activeCat !== "Todas" && ` · ${activeCat}`}
         </span>
         <div className="flex gap-2">
           <input
@@ -1751,6 +1724,35 @@ function RecursosPanel() {
             <LinkIcon className="h-4 w-4" /> Añadir enlace
           </Button>
         </div>
+      </div>
+
+      <div className="space-y-3">
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar recurso por nombre…"
+          className="bg-card shadow-[var(--shadow-soft)]"
+        />
+        <div className="flex flex-wrap gap-2">
+          {["Todas", ...RESOURCE_CATEGORIES].map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setActiveCat(cat)}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-medium transition",
+                activeCat === cat
+                  ? "bg-primary text-primary-foreground shadow-[var(--shadow-soft)]"
+                  : "bg-card text-foreground shadow-[var(--shadow-elevated)] hover:opacity-90",
+              )}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+        {activeCat !== "Todas" && (
+          <p className="text-xs text-muted-foreground">Los nuevos recursos se añadirán a «{activeCat}».</p>
+        )}
       </div>
 
       {addingUrl && (
@@ -1781,9 +1783,9 @@ function RecursosPanel() {
       <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-elevated)]">
         {isLoading ? (
           <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
-        ) : resources && resources.length > 0 ? (
+        ) : filtered.length > 0 ? (
           <ul className="divide-y divide-border">
-            {resources.map((r) => (
+            {filtered.map((r) => (
               <li key={r.id} className="flex items-center gap-3 px-4 py-3">
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-foreground">
                   {r.kind === "url" ? <LinkIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
@@ -1794,6 +1796,9 @@ function RecursosPanel() {
                     {r.kind === "url" ? r.url : (r.mime_type ?? "Archivo")}
                   </div>
                 </button>
+                <span className="hidden shrink-0 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline">
+                  {r.category}
+                </span>
                 <button
                   type="button"
                   onClick={() => remove(r)}
@@ -1807,10 +1812,54 @@ function RecursosPanel() {
           </ul>
         ) : (
           <div className="p-8 text-center text-sm text-muted-foreground">
-            Aún no hay recursos. Sube un archivo o añade un enlace.
+            {q || activeCat !== "Todas"
+              ? "No hay recursos que coincidan."
+              : "Aún no hay recursos. Sube un archivo o añade un enlace."}
           </div>
         )}
       </div>
+
+      {preview && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 duration-200 animate-in fade-in">
+          <button
+            type="button"
+            aria-label="Cerrar"
+            onClick={() => setPreview(null)}
+            className="absolute inset-0 bg-foreground/40 backdrop-blur-sm"
+          />
+          <div className="relative z-10 flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-card shadow-[var(--shadow-float)]">
+            <header className="flex items-center justify-between gap-4 border-b border-border px-5 py-3">
+              <p className="truncate text-sm font-semibold text-foreground">{preview.title}</p>
+              <div className="flex items-center gap-1.5">
+                <a
+                  href={preview.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Abrir en pestaña nueva"
+                  className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground transition hover:text-foreground"
+                >
+                  <Download className="h-4 w-4" />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setPreview(null)}
+                  aria-label="Cerrar"
+                  className="grid h-9 w-9 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </header>
+            <div className="flex-1 overflow-auto bg-muted/30 p-2">
+              {preview.mime?.startsWith("image/") ? (
+                <img src={preview.url} alt={preview.title} className="mx-auto max-h-full max-w-full rounded-lg" />
+              ) : (
+                <iframe src={preview.url} title={preview.title} className="h-[76vh] w-full rounded-lg" />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
