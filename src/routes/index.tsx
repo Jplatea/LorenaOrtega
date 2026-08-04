@@ -1223,7 +1223,7 @@ function DataPeekModal({ label, table, onClose }: { label: string; table: PeekTa
 
 function ExpandedCard({ card, onClose }: { card: DashCard; onClose: () => void }) {
   return (
-    <div className="flex h-full min-h-[360px] flex-col p-7 duration-500 animate-in fade-in slide-in-from-bottom-2 sm:p-9">
+    <div className="flex h-full max-h-[76vh] min-h-[360px] flex-col p-7 duration-500 animate-in fade-in slide-in-from-bottom-2 sm:p-9">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="grid h-11 w-11 place-items-center rounded-2xl bg-card text-foreground shadow-[var(--shadow-elevated)]">
@@ -1241,7 +1241,7 @@ function ExpandedCard({ card, onClose }: { card: DashCard; onClose: () => void }
         </button>
       </div>
 
-      <div className="mt-6 flex-1">
+      <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-1">
         {card.label === "Clientes" ? (
           <ClientesPanel />
         ) : card.label === "Recetas" ? (
@@ -1958,6 +1958,165 @@ const nameOf = (c: string) => c.split("\n")[0] ?? "";
 const descOf = (c: string) => c.split("\n").slice(1).join("\n");
 const joinND = (n: string, d: string) => (d ? `${n}\n${d}` : n);
 
+type BoardRecipe = { id: string; meal: string; title: string; content: string };
+
+function VisualDietBoard({
+  activeDay,
+  recipes,
+  getCell,
+  update,
+  search,
+  setSearch,
+  dragOver,
+  setDragOver,
+}: {
+  activeDay: number;
+  recipes: BoardRecipe[];
+  getCell: (key: string) => MealValue;
+  update: (key: string, fn: (v: MealValue) => MealValue) => void;
+  search: string;
+  setSearch: (v: string) => void;
+  dragOver: string | null;
+  setDragOver: (v: string | null) => void;
+}) {
+  const q = search.trim().toLowerCase();
+  const palette = recipes.filter((r) => !q || r.title.toLowerCase().includes(q));
+
+  const foodLabel = (opt: { recipeId: string; content: string }) => {
+    const rec = recipes.find((r) => r.id === opt.recipeId);
+    return rec ? rec.title : nameOf(opt.content).trim() || "Personalizada";
+  };
+  const addRecipe = (mealId: string, recipe: BoardRecipe) => {
+    const key = `${activeDay}-${mealId}`;
+    update(key, (v) => {
+      const empty = v.options.length === 1 && !v.options[0].recipeId && !v.options[0].content.trim();
+      if (empty) return { options: [{ recipeId: recipe.id, content: recipe.content }], joiners: [] };
+      return {
+        options: [...v.options, { recipeId: recipe.id, content: recipe.content }],
+        joiners: [...v.joiners, "y"],
+      };
+    });
+  };
+  const removeFood = (mealId: string, idx: number) => {
+    const key = `${activeDay}-${mealId}`;
+    update(key, (v) =>
+      v.options.length > 1
+        ? {
+            options: v.options.filter((_, i) => i !== idx),
+            joiners: v.joiners.filter((_, i) => i !== (idx === 0 ? 0 : idx - 1)),
+          }
+        : { options: [{ recipeId: "", content: "" }], joiners: [] },
+    );
+  };
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-[290px_1fr]">
+      {/* Paleta de recetas (arrastrables) */}
+      <div className="space-y-3">
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar receta…"
+          className="bg-card shadow-[var(--shadow-soft)]"
+        />
+        <p className="text-xs text-muted-foreground">Arrastra una receta a una comida →</p>
+        <div className="max-h-[62vh] space-y-2 overflow-auto pr-1">
+          {palette.length === 0 ? (
+            <p className="p-4 text-center text-sm text-muted-foreground">Sin recetas.</p>
+          ) : (
+            palette.map((r) => (
+              <div
+                key={r.id}
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData("text/plain", r.id)}
+                className="cursor-grab rounded-xl border border-border bg-card p-3 shadow-[var(--shadow-elevated)] transition hover:-translate-y-0.5 active:cursor-grabbing"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-soft text-foreground">
+                    <BookOpen className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{r.title}</p>
+                    <p className="truncate text-[11px] text-muted-foreground">
+                      {MEALS.find((m) => m.id === r.meal)?.label ?? r.meal}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Comidas del día (zonas de soltado) */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {MEALS.map((m) => {
+          const key = `${activeDay}-${m.id}`;
+          const cell = getCell(key);
+          const hasFood = cell.options.some((o) => o.recipeId || o.content.trim());
+          const isOver = dragOver === m.id;
+          return (
+            <div
+              key={m.id}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (dragOver !== m.id) setDragOver(m.id);
+              }}
+              onDragLeave={() => setDragOver(dragOver === m.id ? null : dragOver)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(null);
+                const id = e.dataTransfer.getData("text/plain");
+                const rec = recipes.find((r) => r.id === id);
+                if (rec) addRecipe(m.id, rec);
+              }}
+              className={cn(
+                "rounded-2xl border-2 border-dashed p-3 transition",
+                isOver ? "border-primary bg-primary-soft/40" : "border-border bg-card/60",
+              )}
+            >
+              <p className="mb-2 text-sm font-semibold text-foreground">{m.label}</p>
+              {!hasFood ? (
+                <p className="rounded-xl bg-secondary/40 py-6 text-center text-xs text-muted-foreground">
+                  Arrastra recetas aquí
+                </p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {cell.options.map((opt, i) =>
+                    opt.recipeId || opt.content.trim() ? (
+                      <li
+                        key={i}
+                        className="flex items-center justify-between gap-2 rounded-xl bg-card p-2 shadow-[var(--shadow-soft)]"
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          {i > 0 && (
+                            <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-bold text-primary">
+                              {cell.joiners[i - 1] === "o" ? "Ó" : "Y"}
+                            </span>
+                          )}
+                          <span className="truncate text-sm text-foreground">{foodLabel(opt)}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeFood(m.id, i)}
+                          aria-label="Quitar"
+                          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-muted-foreground transition hover:text-destructive"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </li>
+                    ) : null,
+                  )}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function DietEditor({ patientId, patientName, onBack }: { patientId: string; patientName: string; onBack: () => void }) {
   const qc = useQueryClient();
   const [week, setWeek] = useState(1);
@@ -1966,6 +2125,9 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
   const [saving, setSaving] = useState(false);
   const [pendingNew, setPendingNew] = useState<Record<string, string>>({});
   const [openMeal, setOpenMeal] = useState<string | null>(null);
+  const [mode, setMode] = useState<"visual" | "clasico">("visual");
+  const [paletteSearch, setPaletteSearch] = useState("");
+  const [dragOverMeal, setDragOverMeal] = useState<string | null>(null);
 
   const { data: recipes } = useQuery({
     queryKey: ["recipes-diet"],
@@ -2149,6 +2311,32 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
         </div>
       )}
 
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground">Modo</span>
+        <div className="inline-flex rounded-full bg-secondary/60 p-1">
+          <button
+            type="button"
+            onClick={() => setMode("visual")}
+            className={cn(
+              "rounded-full px-3 py-1 text-xs font-medium transition",
+              mode === "visual" ? "bg-card text-foreground shadow-[var(--shadow-soft)]" : "text-muted-foreground",
+            )}
+          >
+            Visual
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("clasico")}
+            className={cn(
+              "rounded-full px-3 py-1 text-xs font-medium transition",
+              mode === "clasico" ? "bg-card text-foreground shadow-[var(--shadow-soft)]" : "text-muted-foreground",
+            )}
+          >
+            Clásico
+          </button>
+        </div>
+      </div>
+
       <div className="flex flex-wrap gap-2">
         {DAYS.map((d) => {
           const active = activeDay === d.id;
@@ -2180,6 +2368,17 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
 
       {isLoading ? (
         <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
+      ) : mode === "visual" ? (
+        <VisualDietBoard
+          activeDay={activeDay}
+          recipes={recipes ?? []}
+          getCell={getCell}
+          update={update}
+          search={paletteSearch}
+          setSearch={setPaletteSearch}
+          dragOver={dragOverMeal}
+          setDragOver={setDragOverMeal}
+        />
       ) : (
         <div className="space-y-4">
           {MEALS.map((m) => {
