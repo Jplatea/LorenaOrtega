@@ -139,6 +139,17 @@ function LandingPage() {
     });
   }, []);
 
+  // Con el overlay abierto, bloqueamos el scroll de la página de fondo para
+  // que no aparezca su barra de scroll (el segundo scrollbar "fantasma").
+  useEffect(() => {
+    const openOverlay = showLogin || authed;
+    const prev = document.body.style.overflow;
+    if (openOverlay) document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [showLogin, authed]);
+
   function openLogin() {
     setOpen(false);
     setShowLogin(true);
@@ -2191,7 +2202,7 @@ function VisualDietBoard({
                 if (rec) addRecipe(m.id, rec);
               }}
               className={cn(
-                "rounded-2xl border-2 border-dashed p-3 transition",
+                "rounded-2xl border-2 border-dashed p-2.5 transition",
                 isOver
                   ? "border-primary bg-primary-soft/40"
                   : activeMeal === m.id
@@ -2203,7 +2214,7 @@ function VisualDietBoard({
                 type="button"
                 onClick={() => setActiveMeal(activeMeal === m.id ? null : m.id)}
                 title="Filtrar recetas de esta comida"
-                className="mb-2 flex w-full items-center justify-between gap-2 text-left"
+                className="mb-1.5 flex w-full items-center justify-between gap-2 text-left"
               >
                 <span className="text-sm font-semibold text-foreground">{m.label}</span>
                 {activeMeal === m.id && (
@@ -2213,16 +2224,16 @@ function VisualDietBoard({
                 )}
               </button>
               {!hasFood ? (
-                <p className="rounded-xl bg-secondary/40 py-4 text-center text-xs text-muted-foreground">
+                <p className="rounded-xl bg-secondary/40 py-3 text-center text-[11px] text-muted-foreground">
                   Arrastra recetas aquí
                 </p>
               ) : (
-                <ul className={cn("space-y-1.5", fullscreen && "max-h-[30vh] overflow-y-auto pr-0.5")}>
+                <ul className={cn("space-y-1", fullscreen ? "max-h-[24vh] overflow-y-auto pr-0.5" : "")}>
                   {cell.options.map((opt, i) =>
                     opt.recipeId || opt.content.trim() ? (
                       <li
                         key={i}
-                        className="flex items-center justify-between gap-2 rounded-xl bg-card p-2 shadow-[var(--shadow-soft)]"
+                        className="flex items-center justify-between gap-2 rounded-lg bg-card px-2 py-1.5 shadow-[var(--shadow-soft)]"
                       >
                         <span className="flex min-w-0 items-center gap-2">
                           {i > 0 && (
