@@ -35,6 +35,8 @@ import {
   MapPin,
   Send,
   Inbox,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -1055,7 +1057,12 @@ const COLUMN_LABELS: Record<string, string> = {
 
 function DashboardCards() {
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
   const [peek, setPeek] = useState<string | null>(null);
+  const closeCard = () => {
+    setExpanded(null);
+    setFullscreen(false);
+  };
   const { data: pendingLeads } = useQuery({
     queryKey: ["leads-pending-count"],
     queryFn: async () => {
@@ -1089,13 +1096,20 @@ function DashboardCards() {
             <div
               key={c.label}
               className={cn(
-                "relative overflow-hidden rounded-3xl border border-black/5 shadow-[var(--shadow-float)] transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
-                isOpen ? "md:flex-[7]" : isCollapsed ? "md:flex-[0.5]" : "md:flex-1",
+                "relative overflow-hidden border border-black/5 shadow-[var(--shadow-float)] transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                isOpen && fullscreen
+                  ? "fixed inset-0 z-[55] rounded-none border-0"
+                  : cn("rounded-3xl", isOpen ? "md:flex-[7]" : isCollapsed ? "md:flex-[0.5]" : "md:flex-1"),
               )}
               style={{ background: c.bg }}
             >
               {isOpen ? (
-                <ExpandedCard card={c} onClose={() => setExpanded(null)} />
+                <ExpandedCard
+                  card={c}
+                  onClose={closeCard}
+                  fullscreen={fullscreen}
+                  onToggleFullscreen={() => setFullscreen((v) => !v)}
+                />
               ) : (
                 <div className="relative h-full">
                   <button
@@ -1228,9 +1242,24 @@ function DataPeekModal({ label, table, onClose }: { label: string; table: PeekTa
   );
 }
 
-function ExpandedCard({ card, onClose }: { card: DashCard; onClose: () => void }) {
+function ExpandedCard({
+  card,
+  onClose,
+  fullscreen,
+  onToggleFullscreen,
+}: {
+  card: DashCard;
+  onClose: () => void;
+  fullscreen: boolean;
+  onToggleFullscreen: () => void;
+}) {
   return (
-    <div className="flex h-full max-h-[76vh] min-h-[360px] flex-col p-7 duration-500 animate-in fade-in slide-in-from-bottom-2 sm:p-9">
+    <div
+      className={cn(
+        "flex h-full min-h-[360px] flex-col p-7 duration-500 animate-in fade-in slide-in-from-bottom-2 sm:p-9",
+        fullscreen ? "max-h-none" : "max-h-[76vh]",
+      )}
+    >
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className="grid h-11 w-11 place-items-center rounded-2xl bg-card text-foreground shadow-[var(--shadow-elevated)]">
@@ -1238,14 +1267,25 @@ function ExpandedCard({ card, onClose }: { card: DashCard; onClose: () => void }
           </span>
           <h3 className="text-xl font-semibold text-foreground">{card.label}</h3>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Cerrar"
-          className="grid h-9 w-9 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggleFullscreen}
+            aria-label={fullscreen ? "Ventana normal" : "Expandir a pantalla completa"}
+            title={fullscreen ? "Ventana normal" : "Expandir a pantalla completa"}
+            className="grid h-9 w-9 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground"
+          >
+            {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="grid h-9 w-9 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-1">
@@ -1254,7 +1294,7 @@ function ExpandedCard({ card, onClose }: { card: DashCard; onClose: () => void }
         ) : card.label === "Recetas" ? (
           <RecetasPanel />
         ) : card.label === "Dietas" ? (
-          <DietasPanel />
+          <DietasPanel fullscreen={fullscreen} />
         ) : card.label === "Recursos" ? (
           <RecursosPanel />
         ) : card.label === "Solicitudes" ? (
@@ -1871,7 +1911,7 @@ function RecursosPanel() {
   );
 }
 
-function DietasPanel() {
+function DietasPanel({ fullscreen }: { fullscreen: boolean }) {
   const [client, setClient] = useState<{ id: string; name: string } | null>(null);
 
   const { data: clients, isLoading } = useQuery({
@@ -1886,7 +1926,14 @@ function DietasPanel() {
   });
 
   if (client) {
-    return <DietEditor patientId={client.id} patientName={client.name} onBack={() => setClient(null)} />;
+    return (
+      <DietEditor
+        patientId={client.id}
+        patientName={client.name}
+        onBack={() => setClient(null)}
+        fullscreen={fullscreen}
+      />
+    );
   }
 
   return (
@@ -1986,8 +2033,11 @@ function VisualDietBoard({
   dragOver: string | null;
   setDragOver: (v: string | null) => void;
 }) {
+  const [activeMeal, setActiveMeal] = useState<string | null>(null);
   const q = search.trim().toLowerCase();
-  const palette = recipes.filter((r) => !q || r.title.toLowerCase().includes(q));
+  const palette = recipes.filter(
+    (r) => (!activeMeal || r.meal === activeMeal) && (!q || r.title.toLowerCase().includes(q)),
+  );
 
   const foodLabel = (opt: { recipeId: string; content: string }) => {
     const rec = recipes.find((r) => r.id === opt.recipeId);
@@ -2026,7 +2076,18 @@ function VisualDietBoard({
           placeholder="Buscar receta…"
           className="bg-card shadow-[var(--shadow-soft)]"
         />
-        <p className="text-xs text-muted-foreground">Arrastra una receta a una comida →</p>
+        {activeMeal ? (
+          <button
+            type="button"
+            onClick={() => setActiveMeal(null)}
+            className="flex w-full items-center justify-between gap-2 rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-[var(--shadow-soft)] transition hover:opacity-90"
+          >
+            <span className="truncate">Recetas de {MEALS.find((m) => m.id === activeMeal)?.label}</span>
+            <X className="h-3.5 w-3.5 shrink-0" />
+          </button>
+        ) : (
+          <p className="text-xs text-muted-foreground">Pulsa una comida para filtrar sus recetas, o arrastra a cualquiera.</p>
+        )}
         <div className="max-h-[62vh] space-y-2 overflow-auto pr-1">
           {palette.length === 0 ? (
             <p className="p-4 text-center text-sm text-muted-foreground">Sin recetas.</p>
@@ -2079,10 +2140,26 @@ function VisualDietBoard({
               }}
               className={cn(
                 "rounded-2xl border-2 border-dashed p-3 transition",
-                isOver ? "border-primary bg-primary-soft/40" : "border-border bg-card/60",
+                isOver
+                  ? "border-primary bg-primary-soft/40"
+                  : activeMeal === m.id
+                    ? "border-primary/60 bg-primary-soft/20"
+                    : "border-border bg-card/60",
               )}
             >
-              <p className="mb-2 text-sm font-semibold text-foreground">{m.label}</p>
+              <button
+                type="button"
+                onClick={() => setActiveMeal(activeMeal === m.id ? null : m.id)}
+                title="Filtrar recetas de esta comida"
+                className="mb-2 flex w-full items-center justify-between gap-2 text-left"
+              >
+                <span className="text-sm font-semibold text-foreground">{m.label}</span>
+                {activeMeal === m.id && (
+                  <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground">
+                    filtrando
+                  </span>
+                )}
+              </button>
               {!hasFood ? (
                 <p className="rounded-xl bg-secondary/40 py-6 text-center text-xs text-muted-foreground">
                   Arrastra recetas aquí
@@ -2124,7 +2201,17 @@ function VisualDietBoard({
   );
 }
 
-function DietEditor({ patientId, patientName, onBack }: { patientId: string; patientName: string; onBack: () => void }) {
+function DietEditor({
+  patientId,
+  patientName,
+  onBack,
+  fullscreen,
+}: {
+  patientId: string;
+  patientName: string;
+  onBack: () => void;
+  fullscreen: boolean;
+}) {
   const qc = useQueryClient();
   const [week, setWeek] = useState(1);
   const [activeDay, setActiveDay] = useState<number>(DAYS[0].id);
@@ -2132,7 +2219,6 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
   const [saving, setSaving] = useState(false);
   const [pendingNew, setPendingNew] = useState<Record<string, string>>({});
   const [openMeal, setOpenMeal] = useState<string | null>(null);
-  const [mode, setMode] = useState<"visual" | "clasico">("visual");
   const [paletteSearch, setPaletteSearch] = useState("");
   const [dragOverMeal, setDragOverMeal] = useState<string | null>(null);
 
@@ -2318,33 +2404,14 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
         </div>
       )}
 
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">Modo</span>
-        <div className="inline-flex rounded-full bg-secondary/60 p-1">
-          <button
-            type="button"
-            onClick={() => setMode("visual")}
-            className={cn(
-              "rounded-full px-3 py-1 text-xs font-medium transition",
-              mode === "visual" ? "bg-card text-foreground shadow-[var(--shadow-soft)]" : "text-muted-foreground",
-            )}
-          >
-            Visual
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("clasico")}
-            className={cn(
-              "rounded-full px-3 py-1 text-xs font-medium transition",
-              mode === "clasico" ? "bg-card text-foreground shadow-[var(--shadow-soft)]" : "text-muted-foreground",
-            )}
-          >
-            Clásico
-          </button>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
+      <div
+        className={cn(
+          "gap-2",
+          fullscreen
+            ? "fixed left-1/2 top-4 z-[56] flex max-w-[70vw] -translate-x-1/2 flex-nowrap overflow-x-auto rounded-full bg-card/90 p-1.5 shadow-[var(--shadow-float)] backdrop-blur"
+            : "flex flex-wrap",
+        )}
+      >
         {DAYS.map((d) => {
           const active = activeDay === d.id;
           return (
@@ -2375,7 +2442,7 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
 
       {isLoading ? (
         <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
-      ) : mode === "visual" ? (
+      ) : (
         <VisualDietBoard
           activeDay={activeDay}
           recipes={recipes ?? []}
@@ -2386,7 +2453,8 @@ function DietEditor({ patientId, patientName, onBack }: { patientId: string; pat
           dragOver={dragOverMeal}
           setDragOver={setDragOverMeal}
         />
-      ) : (
+      )}
+      {false && (
         <div className="space-y-4">
           {MEALS.map((m) => {
             const key = `${activeDay}-${m.id}`;
