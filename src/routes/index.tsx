@@ -743,9 +743,9 @@ type DashCard = {
 
 const DASH_CARDS: DashCard[] = [
   { label: "Clientes", desc: "Tus pacientes y sus fichas.", icon: Users, bg: "linear-gradient(150deg, #D3E2D1, #E7F0E6)" },
-  { label: "Dietas", desc: "Planes semanales por paciente.", icon: NotebookPen, bg: "linear-gradient(150deg, #F6B1AC, #FBD5D2)" },
+  { label: "Dietas", desc: "Planes semanales por paciente.", icon: NotebookPen, bg: "linear-gradient(150deg, #E6E4E1, #F1EFEC)" },
   { label: "Recetas", desc: "Recetario por tipo de comida.", icon: BookOpen, bg: "linear-gradient(150deg, #FBD3AC, #FEE8D2)" },
-  { label: "Recursos", desc: "Guías y materiales de apoyo.", icon: Activity, bg: "linear-gradient(150deg, #E6E4E1, #F1EFEC)" },
+  { label: "Recursos", desc: "Guías y materiales de apoyo.", icon: Activity, bg: "linear-gradient(150deg, #C6D3D8, #E4ECEF)" },
   { label: "Solicitudes", desc: "Reservas y mensajes recibidos.", icon: Inbox, bg: "linear-gradient(150deg, #F7C6C1, #FCE3E0)" },
 ];
 
@@ -2034,6 +2034,9 @@ function VisualDietBoard({
   setDragOver: (v: string | null) => void;
 }) {
   const [activeMeal, setActiveMeal] = useState<string | null>(null);
+  const [customFor, setCustomFor] = useState<string | null>(null);
+  const [cName, setCName] = useState("");
+  const [cDesc, setCDesc] = useState("");
   const q = search.trim().toLowerCase();
   const palette = recipes.filter(
     (r) => (!activeMeal || r.meal === activeMeal) && (!q || r.title.toLowerCase().includes(q)),
@@ -2064,6 +2067,28 @@ function VisualDietBoard({
           }
         : { options: [{ recipeId: "", content: "" }], joiners: [] },
     );
+  };
+  const toggleJoiner = (mealId: string, idx: number) => {
+    const key = `${activeDay}-${mealId}`;
+    update(key, (v) => {
+      const joiners = [...v.joiners];
+      joiners[idx - 1] = joiners[idx - 1] === "y" ? "o" : "y";
+      return { ...v, joiners };
+    });
+  };
+  const addCustom = (mealId: string) => {
+    const name = cName.trim();
+    if (!name) return;
+    const content = cDesc.trim() ? `${name}\n${cDesc.trim()}` : name;
+    const key = `${activeDay}-${mealId}`;
+    update(key, (v) => {
+      const empty = v.options.length === 1 && !v.options[0].recipeId && !v.options[0].content.trim();
+      if (empty) return { options: [{ recipeId: "", content }], joiners: [] };
+      return { options: [...v.options, { recipeId: "", content }], joiners: [...v.joiners, "y"] };
+    });
+    setCName("");
+    setCDesc("");
+    setCustomFor(null);
   };
 
   return (
@@ -2174,9 +2199,14 @@ function VisualDietBoard({
                       >
                         <span className="flex min-w-0 items-center gap-2">
                           {i > 0 && (
-                            <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-[10px] font-bold text-primary">
+                            <button
+                              type="button"
+                              onClick={() => toggleJoiner(m.id, i)}
+                              title="Cambiar entre Y (junto) y Ó (alternativa)"
+                              className="shrink-0 rounded-full bg-primary px-1.5 text-[10px] font-bold text-primary-foreground transition hover:opacity-90"
+                            >
                               {cell.joiners[i - 1] === "o" ? "Ó" : "Y"}
-                            </span>
+                            </button>
                           )}
                           <span className="truncate text-sm text-foreground">{foodLabel(opt)}</span>
                         </span>
@@ -2192,6 +2222,54 @@ function VisualDietBoard({
                     ) : null,
                   )}
                 </ul>
+              )}
+
+              {customFor === m.id ? (
+                <div className="mt-2 space-y-1.5 rounded-xl bg-secondary/40 p-2">
+                  <Input
+                    value={cName}
+                    onChange={(e) => setCName(e.target.value)}
+                    placeholder="Nombre del producto"
+                    autoFocus
+                    className="h-8 bg-card text-sm shadow-[var(--shadow-soft)]"
+                  />
+                  <Input
+                    value={cDesc}
+                    onChange={(e) => setCDesc(e.target.value)}
+                    placeholder="Descripción / cantidad (opcional)"
+                    className="h-8 bg-card text-sm shadow-[var(--shadow-soft)]"
+                  />
+                  <div className="flex justify-end gap-1.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7"
+                      onClick={() => {
+                        setCustomFor(null);
+                        setCName("");
+                        setCDesc("");
+                      }}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button type="button" size="sm" className="h-7" onClick={() => addCustom(m.id)}>
+                      Añadir
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomFor(m.id);
+                    setCName("");
+                    setCDesc("");
+                  }}
+                  className="mt-2 flex w-full items-center justify-center gap-1 rounded-xl border border-dashed border-border py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Producto a medida
+                </button>
               )}
             </div>
           );
