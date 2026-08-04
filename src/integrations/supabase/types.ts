@@ -232,6 +232,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          image_path: string | null
           ingredients: Json
           meal: Database["public"]["Enums"]["meal_type"]
           title: string
@@ -242,6 +243,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          image_path?: string | null
           ingredients?: Json
           meal: Database["public"]["Enums"]["meal_type"]
           title: string
@@ -252,6 +254,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          image_path?: string | null
           ingredients?: Json
           meal?: Database["public"]["Enums"]["meal_type"]
           title?: string

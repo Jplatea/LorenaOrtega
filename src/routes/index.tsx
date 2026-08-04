@@ -1343,7 +1343,14 @@ type RecipeItem = {
   title: string;
   content: string;
   ingredients: { name: string; amount: string }[];
+  image_path: string | null;
 };
+
+/** URL pública de la imagen de una receta (bucket público 'recipe-images'). */
+function recipeImageUrl(path: string | null | undefined): string | null {
+  if (!path) return null;
+  return supabase.storage.from("recipe-images").getPublicUrl(path).data.publicUrl;
+}
 
 function splitAmount(a: string): { amount: string; unit: string } {
   const t = (a ?? "").trim();
@@ -1364,7 +1371,7 @@ function RecetasPanel() {
     queryFn: async () => {
       const { data } = await supabase
         .from("recipes")
-        .select("id, meal, title, content, ingredients")
+        .select("id, meal, title, content, ingredients, image_path")
         .order("title");
       return (data ?? []).map((r) => ({ ...r, ingredients: ensureIngredients(r.ingredients) })) as RecipeItem[];
     },
@@ -1431,6 +1438,13 @@ function RecetasPanel() {
           <ul className="divide-y divide-border">
             {recipes.map((r) => (
               <li key={r.id} className="flex items-center gap-3 px-4 py-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-primary-soft text-foreground">
+                  {recipeImageUrl(r.image_path) ? (
+                    <img src={recipeImageUrl(r.image_path) ?? ""} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <BookOpen className="h-4 w-4" />
+                  )}
+                </span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium text-foreground">{r.title}</div>
                   <div className="truncate text-xs text-muted-foreground">
@@ -1494,7 +1508,30 @@ function RecipeEditor({
       ? recipe.ingredients.map((i) => ({ name: i.name, ...splitAmount(i.amount) }))
       : [{ name: "", amount: "", unit: "gr" }],
   );
+  const [imagePath, setImagePath] = useState<string | null>(recipe?.image_path ?? null);
+  const [imgUploading, setImgUploading] = useState(false);
+  const imgRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
+
+  async function uploadImage(file: File) {
+    setImgUploading(true);
+    const ext = file.name.split(".").pop() || "jpg";
+    const path = `${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage
+      .from("recipe-images")
+      .upload(path, file, { contentType: file.type || undefined });
+    setImgUploading(false);
+    if (error) {
+      toast.error("No se pudo subir la imagen", { description: error.message });
+      return;
+    }
+    if (imagePath) supabase.storage.from("recipe-images").remove([imagePath]);
+    setImagePath(path);
+  }
+  async function removeImage() {
+    if (imagePath) await supabase.storage.from("recipe-images").remove([imagePath]);
+    setImagePath(null);
+  }
 
   async function save() {
     if (!title.trim()) {
@@ -1507,6 +1544,7 @@ function RecipeEditor({
       meal,
       title: title.trim(),
       content: "",
+      image_path: imagePath,
       ingredients: ingredients
         .filter((i) => i.name.trim() || i.amount.trim())
         .map((i) => ({
@@ -1571,6 +1609,41 @@ function RecipeEditor({
               ))}
             </SelectContent>
           </Select>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label>Imagen (opcional)</Label>
+        <div className="flex items-center gap-3">
+          <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-xl border border-border bg-secondary/40">
+            {imagePath ? (
+              <img src={recipeImageUrl(imagePath) ?? ""} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <BookOpen className="h-6 w-6 text-muted-foreground" />
+            )}
+          </div>
+          <input
+            ref={imgRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) uploadImage(f);
+              e.target.value = "";
+            }}
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="outline" disabled={imgUploading} onClick={() => imgRef.current?.click()}>
+              {imgUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {imagePath ? "Cambiar" : "Subir imagen"}
+            </Button>
+            {imagePath && (
+              <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={removeImage}>
+                Quitar
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -2007,6 +2080,7 @@ type RecipeOpt = {
   title: string;
   content: string;
   ingredients: { name: string; amount: string }[];
+  imageUrl: string | null;
 };
 
 function AutoResizeTextarea(props: React.ComponentProps<typeof Textarea>) {
@@ -2038,7 +2112,7 @@ const nameOf = (c: string) => c.split("\n")[0] ?? "";
 const descOf = (c: string) => c.split("\n").slice(1).join("\n");
 const joinND = (n: string, d: string) => (d ? `${n}\n${d}` : n);
 
-type BoardRecipe = { id: string; meal: string; title: string; content: string };
+type BoardRecipe = { id: string; meal: string; title: string; content: string; imageUrl?: string | null };
 
 function VisualDietBoard({
   activeDay,
@@ -2163,8 +2237,12 @@ function VisualDietBoard({
                 className="cursor-grab rounded-xl border border-border bg-card p-3 shadow-[var(--shadow-elevated)] transition hover:-translate-y-0.5 active:cursor-grabbing"
               >
                 <div className="flex items-center gap-2">
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-soft text-foreground">
-                    <BookOpen className="h-4 w-4" />
+                  <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-primary-soft text-foreground">
+                    {r.imageUrl ? (
+                      <img src={r.imageUrl} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <BookOpen className="h-4 w-4" />
+                    )}
                   </span>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-foreground">{r.title}</p>
@@ -2180,7 +2258,7 @@ function VisualDietBoard({
       </div>
 
       {/* Comidas del día (zonas de soltado) */}
-      <div className={cn("grid gap-3 sm:grid-cols-2", fullscreen && "xl:grid-cols-3")}>
+      <div className={cn("grid gap-2.5 sm:grid-cols-2", fullscreen && "lg:grid-cols-3")}>
         {MEALS.map((m) => {
           const key = `${activeDay}-${m.id}`;
           const cell = getCell(key);
@@ -2228,7 +2306,7 @@ function VisualDietBoard({
                   Arrastra recetas aquí
                 </p>
               ) : (
-                <ul className={cn("space-y-1", fullscreen ? "max-h-[24vh] overflow-y-auto pr-0.5" : "")}>
+                <ul className={cn("space-y-1", fullscreen ? "max-h-[20vh] overflow-y-auto pr-0.5" : "")}>
                   {cell.options.map((opt, i) =>
                     opt.recipeId || opt.content.trim() ? (
                       <li
@@ -2365,7 +2443,7 @@ function DietEditor({
     queryFn: async () => {
       const { data } = await supabase
         .from("recipes")
-        .select("id, meal, title, content, ingredients")
+        .select("id, meal, title, content, ingredients, image_path")
         .order("title");
       return (data ?? []).map((r) => ({
         id: r.id,
@@ -2373,6 +2451,7 @@ function DietEditor({
         title: r.title,
         content: r.content || renderIngredients(ensureIngredients(r.ingredients)),
         ingredients: ensureIngredients(r.ingredients),
+        imageUrl: recipeImageUrl(r.image_path),
       })) as RecipeOpt[];
     },
   });
