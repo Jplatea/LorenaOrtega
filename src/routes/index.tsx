@@ -29,6 +29,11 @@ import {
   FileText,
   Save,
   Download,
+  MessageCircle,
+  Mail,
+  Phone,
+  MapPin,
+  Send,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -205,23 +210,7 @@ function LandingPage() {
             </p>
           </Reveal>
           <Reveal delay={240}>
-            <form
-              onSubmit={(e) => e.preventDefault()}
-              className="mx-auto mt-10 flex w-full max-w-xl flex-col gap-2 rounded-3xl border border-border bg-card p-2 shadow-[var(--shadow-float)] sm:flex-row sm:rounded-full sm:items-center"
-            >
-              <label htmlFor="hero-email" className="sr-only">
-                Tu email
-              </label>
-              <input
-                id="hero-email"
-                type="email"
-                placeholder="tucorreo@email.com"
-                className="min-w-0 flex-1 rounded-full bg-transparent px-5 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-              />
-              <Button type="submit" size="lg" className="shrink-0 sm:h-11">
-                Reservar consulta <ArrowRight className="h-4 w-4" />
-              </Button>
-            </form>
+            <HeroLeadForm />
           </Reveal>
         </div>
       </section>
@@ -489,7 +478,10 @@ function LandingPage() {
       </section>
 
       {/* 8. CTA final */}
-      <section id="contacto" className="bg-background px-4 pb-20 sm:px-6 sm:pb-28">
+      {/* 8b. Contacto */}
+      <ContactoSection />
+
+      <section className="bg-background px-4 pb-20 sm:px-6 sm:pb-28">
         <Reveal className="mx-auto max-w-7xl">
           <div
             className="overflow-hidden rounded-3xl px-6 py-20 text-center text-white sm:py-24"
@@ -745,6 +737,193 @@ const DASH_CARDS: DashCard[] = [
   { label: "Recetas", desc: "Recetario por tipo de comida.", icon: BookOpen, bg: "linear-gradient(150deg, #FBD3AC, #FEE8D2)" },
   { label: "Recursos", desc: "Guías y materiales de apoyo.", icon: Activity, bg: "linear-gradient(150deg, #E6E4E1, #F1EFEC)" },
 ];
+
+// Datos de contacto — EDITA estos valores con los reales de la clínica.
+const CONTACT = {
+  whatsapp: "34600000000", // número con prefijo de país, sin "+" ni espacios
+  phone: "+34 600 00 00 00",
+  email: "hola@lorenaortega.es",
+  location: "Consulta presencial y online",
+};
+
+function HeroLeadForm() {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "done">("idle");
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const value = email.trim();
+    if (!value) return;
+    setStatus("loading");
+    const { error } = await supabase.from("leads").insert({ email: value, source: "hero" });
+    if (error) {
+      setStatus("idle");
+      toast.error("No se pudo enviar", { description: "Inténtalo de nuevo en un momento." });
+      return;
+    }
+    setStatus("done");
+  }
+  if (status === "done") {
+    return (
+      <div className="mx-auto mt-10 flex max-w-xl items-center justify-center gap-3 rounded-3xl border border-primary/30 bg-primary-soft/60 px-6 py-5 text-sm font-medium text-foreground shadow-[var(--shadow-float)] sm:rounded-full">
+        <Check className="h-5 w-5 shrink-0 text-primary" />
+        ¡Gracias! Hemos recibido tu solicitud y te contactaremos muy pronto.
+      </div>
+    );
+  }
+  return (
+    <form
+      onSubmit={submit}
+      className="mx-auto mt-10 flex w-full max-w-xl flex-col gap-2 rounded-3xl border border-border bg-card p-2 shadow-[var(--shadow-float)] sm:flex-row sm:items-center sm:rounded-full"
+    >
+      <label htmlFor="hero-email" className="sr-only">
+        Tu email
+      </label>
+      <input
+        id="hero-email"
+        type="email"
+        required
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="tucorreo@email.com"
+        className="min-w-0 flex-1 rounded-full bg-transparent px-5 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+      />
+      <Button type="submit" size="lg" disabled={status === "loading"} className="shrink-0 sm:h-11">
+        {status === "loading" ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <>
+            Reservar consulta <ArrowRight className="h-4 w-4" />
+          </>
+        )}
+      </Button>
+    </form>
+  );
+}
+
+function ContactMethod({
+  icon: Icon,
+  label,
+  value,
+  href,
+  external,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  href?: string;
+  external?: boolean;
+}) {
+  const cls =
+    "flex items-center gap-4 rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-elevated)] transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-float)]";
+  const body = (
+    <>
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary-soft text-foreground">
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+        <span className="block truncate text-sm font-semibold text-foreground">{value}</span>
+      </span>
+    </>
+  );
+  return href ? (
+    <a href={href} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined} className={cls}>
+      {body}
+    </a>
+  ) : (
+    <div className={cls}>{body}</div>
+  );
+}
+
+function ContactForm() {
+  const [form, setForm] = useState({ name: "", email: "", message: "" });
+  const [status, setStatus] = useState<"idle" | "loading" | "done">("idle");
+  const set = (k: "name" | "email" | "message") => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.email.trim()) return;
+    setStatus("loading");
+    const { error } = await supabase.from("leads").insert({
+      name: form.name.trim() || null,
+      email: form.email.trim(),
+      message: form.message.trim() || null,
+      source: "contacto",
+    });
+    if (error) {
+      setStatus("idle");
+      toast.error("No se pudo enviar", { description: "Inténtalo de nuevo en un momento." });
+      return;
+    }
+    setStatus("done");
+  }
+  if (status === "done") {
+    return (
+      <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-3 rounded-3xl border border-primary/30 bg-primary-soft/50 p-8 text-center shadow-[var(--shadow-float)]">
+        <span className="grid h-12 w-12 place-items-center rounded-full bg-primary text-primary-foreground">
+          <Check className="h-6 w-6" />
+        </span>
+        <p className="text-base font-semibold text-foreground">¡Mensaje enviado!</p>
+        <p className="max-w-xs text-sm text-muted-foreground">Gracias por escribir. Te responderé lo antes posible.</p>
+      </div>
+    );
+  }
+  return (
+    <form onSubmit={submit} className="rounded-3xl border border-border bg-card p-6 shadow-[var(--shadow-float)] sm:p-8">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="c-name">Nombre</Label>
+          <Input id="c-name" value={form.name} onChange={set("name")} placeholder="Tu nombre" className="bg-card shadow-[var(--shadow-soft)]" />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="c-email">Email</Label>
+          <Input id="c-email" type="email" required value={form.email} onChange={set("email")} placeholder="tucorreo@email.com" className="bg-card shadow-[var(--shadow-soft)]" />
+        </div>
+      </div>
+      <div className="mt-4 space-y-1.5">
+        <Label htmlFor="c-msg">Cuéntame tu objetivo</Label>
+        <Textarea id="c-msg" value={form.message} onChange={set("message")} placeholder="Qué te gustaría conseguir, disponibilidad…" rows={4} className="bg-card shadow-[var(--shadow-soft)]" />
+      </div>
+      <Button type="submit" size="lg" disabled={status === "loading"} className="mt-5 w-full sm:w-auto">
+        {status === "loading" ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <>
+            <Send className="h-4 w-4" /> Enviar solicitud
+          </>
+        )}
+      </Button>
+    </form>
+  );
+}
+
+function ContactoSection() {
+  const waLink = `https://wa.me/${CONTACT.whatsapp}?text=${encodeURIComponent(
+    "Hola, me gustaría reservar una consulta de nutrición.",
+  )}`;
+  return (
+    <section id="contacto" className="bg-background px-4 py-20 sm:px-6 sm:py-28">
+      <Reveal className="mx-auto max-w-7xl">
+        <div className="text-center">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Contacto</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">Hablemos de tu objetivo</h2>
+          <p className="mx-auto mt-3 max-w-xl text-sm text-muted-foreground sm:text-base">
+            Escríbeme y te propongo el mejor punto de partida, sin compromiso.
+          </p>
+        </div>
+        <div className="mt-12 grid gap-6 lg:grid-cols-[0.85fr_1.15fr]">
+          <div className="space-y-3">
+            <ContactMethod icon={MessageCircle} label="WhatsApp" value="Escríbeme por WhatsApp" href={waLink} external />
+            <ContactMethod icon={Mail} label="Email" value={CONTACT.email} href={`mailto:${CONTACT.email}`} />
+            <ContactMethod icon={Phone} label="Teléfono" value={CONTACT.phone} href={`tel:${CONTACT.phone.replace(/\s+/g, "")}`} />
+            <ContactMethod icon={MapPin} label="Ubicación" value={CONTACT.location} />
+          </div>
+          <ContactForm />
+        </div>
+      </Reveal>
+    </section>
+  );
+}
 
 type PeekTable = "profiles" | "recipes" | "diets" | "resources";
 const PEEK_TABLE: Record<string, PeekTable> = {

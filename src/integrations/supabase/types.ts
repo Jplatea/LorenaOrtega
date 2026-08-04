@@ -55,6 +55,39 @@ export type Database = {
           },
         ]
       }
+      leads: {
+        Row: {
+          created_at: string
+          email: string
+          handled: boolean
+          id: string
+          message: string | null
+          name: string | null
+          phone: string | null
+          source: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          handled?: boolean
+          id?: string
+          message?: string | null
+          name?: string | null
+          phone?: string | null
+          source?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          handled?: boolean
+          id?: string
+          message?: string | null
+          name?: string | null
+          phone?: string | null
+          source?: string
+        }
+        Relationships: []
+      }
       resources: {
         Row: {
           created_at: string
