@@ -37,6 +37,8 @@ import {
   Inbox,
   Maximize2,
   Minimize2,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -179,7 +181,10 @@ function LandingPage() {
 
       {/* Login in-page + panel de 3 tarjetas (sin cambiar de página) */}
       {(showLogin || authed) && (
-        <div className="fixed inset-x-0 bottom-0 top-16 z-40 flex items-start justify-center overflow-y-auto bg-background/95 px-4 py-12 backdrop-blur-xl duration-500 animate-in fade-in">
+        <div
+          id="lo-overlay"
+          className="fixed inset-x-0 bottom-0 top-16 z-40 flex items-start justify-center overflow-y-auto bg-background/95 px-4 py-12 backdrop-blur-xl duration-500 animate-in fade-in"
+        >
           {authed ? (
             <DashboardCards />
           ) : (
@@ -1063,6 +1068,16 @@ function DashboardCards() {
     setExpanded(null);
     setFullscreen(false);
   };
+  // Con una tarjeta abierta, el overlay de fondo no scrollea (evita el
+  // segundo scrollbar "fantasma"); solo scrollea el contenido de la tarjeta.
+  useEffect(() => {
+    const ov = document.getElementById("lo-overlay");
+    if (!ov) return;
+    ov.style.overflowY = expanded ? "hidden" : "";
+    return () => {
+      ov.style.overflowY = "";
+    };
+  }, [expanded]);
   const { data: pendingLeads } = useQuery({
     queryKey: ["leads-pending-count"],
     queryFn: async () => {
@@ -2023,6 +2038,7 @@ function VisualDietBoard({
   setSearch,
   dragOver,
   setDragOver,
+  fullscreen,
 }: {
   activeDay: number;
   recipes: BoardRecipe[];
@@ -2032,6 +2048,7 @@ function VisualDietBoard({
   setSearch: (v: string) => void;
   dragOver: string | null;
   setDragOver: (v: string | null) => void;
+  fullscreen: boolean;
 }) {
   const [activeMeal, setActiveMeal] = useState<string | null>(null);
   const [customFor, setCustomFor] = useState<string | null>(null);
@@ -2090,6 +2107,16 @@ function VisualDietBoard({
     setCDesc("");
     setCustomFor(null);
   };
+  const moveFood = (mealId: string, idx: number, dir: -1 | 1) => {
+    const key = `${activeDay}-${mealId}`;
+    update(key, (v) => {
+      const j = idx + dir;
+      if (j < 0 || j >= v.options.length) return v;
+      const options = [...v.options];
+      [options[idx], options[j]] = [options[j], options[idx]];
+      return { ...v, options };
+    });
+  };
 
   return (
     <div className="grid gap-4 lg:grid-cols-[290px_1fr]">
@@ -2142,7 +2169,7 @@ function VisualDietBoard({
       </div>
 
       {/* Comidas del día (zonas de soltado) */}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className={cn("grid gap-3 sm:grid-cols-2", fullscreen && "xl:grid-cols-3")}>
         {MEALS.map((m) => {
           const key = `${activeDay}-${m.id}`;
           const cell = getCell(key);
@@ -2186,11 +2213,11 @@ function VisualDietBoard({
                 )}
               </button>
               {!hasFood ? (
-                <p className="rounded-xl bg-secondary/40 py-6 text-center text-xs text-muted-foreground">
+                <p className="rounded-xl bg-secondary/40 py-4 text-center text-xs text-muted-foreground">
                   Arrastra recetas aquí
                 </p>
               ) : (
-                <ul className="space-y-1.5">
+                <ul className={cn("space-y-1.5", fullscreen && "max-h-[30vh] overflow-y-auto pr-0.5")}>
                   {cell.options.map((opt, i) =>
                     opt.recipeId || opt.content.trim() ? (
                       <li
@@ -2210,14 +2237,36 @@ function VisualDietBoard({
                           )}
                           <span className="truncate text-sm text-foreground">{foodLabel(opt)}</span>
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => removeFood(m.id, i)}
-                          aria-label="Quitar"
-                          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-muted-foreground transition hover:text-destructive"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
+                        <div className="flex shrink-0 items-center">
+                          <button
+                            type="button"
+                            onClick={() => moveFood(m.id, i, -1)}
+                            disabled={i === 0}
+                            aria-label="Subir"
+                            title="Subir"
+                            className="grid h-6 w-5 place-items-center rounded text-muted-foreground transition hover:text-foreground disabled:opacity-25"
+                          >
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveFood(m.id, i, 1)}
+                            disabled={i === cell.options.length - 1}
+                            aria-label="Bajar"
+                            title="Bajar"
+                            className="grid h-6 w-5 place-items-center rounded text-muted-foreground transition hover:text-foreground disabled:opacity-25"
+                          >
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeFood(m.id, i)}
+                            aria-label="Quitar"
+                            className="ml-0.5 grid h-6 w-6 place-items-center rounded-full text-muted-foreground transition hover:text-destructive"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </li>
                     ) : null,
                   )}
@@ -2530,6 +2579,7 @@ function DietEditor({
           setSearch={setPaletteSearch}
           dragOver={dragOverMeal}
           setDragOver={setDragOverMeal}
+          fullscreen={fullscreen}
         />
       )}
       {false && (
