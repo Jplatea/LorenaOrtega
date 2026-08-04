@@ -34,6 +34,7 @@ import {
   Phone,
   MapPin,
   Send,
+  Inbox,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -736,6 +737,7 @@ const DASH_CARDS: DashCard[] = [
   { label: "Dietas", desc: "Planes semanales por paciente.", icon: NotebookPen, bg: "linear-gradient(150deg, #F6B1AC, #FBD5D2)" },
   { label: "Recetas", desc: "Recetario por tipo de comida.", icon: BookOpen, bg: "linear-gradient(150deg, #FBD3AC, #FEE8D2)" },
   { label: "Recursos", desc: "Guías y materiales de apoyo.", icon: Activity, bg: "linear-gradient(150deg, #E6E4E1, #F1EFEC)" },
+  { label: "Solicitudes", desc: "Reservas y mensajes recibidos.", icon: Inbox, bg: "linear-gradient(150deg, #F7C6C1, #FCE3E0)" },
 ];
 
 // Datos de contacto — EDITA estos valores con los reales de la clínica.
@@ -925,12 +927,127 @@ function ContactoSection() {
   );
 }
 
-type PeekTable = "profiles" | "recipes" | "diets" | "resources";
+function SolicitudesPanel() {
+  const qc = useQueryClient();
+  const { data: leads, isLoading } = useQuery({
+    queryKey: ["leads-list"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("leads")
+        .select("id, name, email, phone, message, source, handled, created_at")
+        .order("created_at", { ascending: false });
+      return data ?? [];
+    },
+  });
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["leads-list"] });
+    qc.invalidateQueries({ queryKey: ["leads-pending-count"] });
+  };
+  async function toggleHandled(id: string, handled: boolean) {
+    await supabase.from("leads").update({ handled: !handled }).eq("id", id);
+    invalidate();
+  }
+  async function remove(id: string) {
+    await supabase.from("leads").delete().eq("id", id);
+    invalidate();
+  }
+  const fmtDate = (s: string) =>
+    new Date(s).toLocaleDateString("es-ES", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        {isLoading ? "Cargando…" : `${leads?.length ?? 0} solicitudes`}
+      </p>
+      {isLoading ? null : leads && leads.length > 0 ? (
+        <ul className="space-y-3">
+          {leads.map((l) => (
+            <li
+              key={l.id}
+              className={cn(
+                "rounded-2xl bg-card p-4 shadow-[var(--shadow-elevated)]",
+                !l.handled && "ring-1 ring-primary/30",
+              )}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">{l.name || "Sin nombre"}</span>
+                    <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {l.source}
+                    </span>
+                    {!l.handled && (
+                      <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-medium text-primary">
+                        Nueva
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+                    <a href={`mailto:${l.email}`} className="hover:text-primary">
+                      {l.email}
+                    </a>
+                    {l.phone && (
+                      <a href={`tel:${l.phone}`} className="hover:text-primary">
+                        {l.phone}
+                      </a>
+                    )}
+                    <span>{fmtDate(l.created_at)}</span>
+                  </div>
+                  {l.message && <p className="mt-2 whitespace-pre-wrap text-sm text-foreground/80">{l.message}</p>}
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant={l.handled ? "outline" : "default"}
+                    size="sm"
+                    onClick={() => toggleHandled(l.id, l.handled)}
+                  >
+                    {l.handled ? (
+                      "Reabrir"
+                    ) : (
+                      <>
+                        <Check className="h-4 w-4" /> Atendida
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 w-9 p-0 text-destructive"
+                    onClick={() => remove(l.id)}
+                    aria-label="Eliminar"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="rounded-2xl bg-card p-8 text-center text-sm text-muted-foreground shadow-[var(--shadow-elevated)]">
+          Aún no hay solicitudes. Las reservas y mensajes de la web aparecerán aquí.
+        </div>
+      )}
+    </div>
+  );
+}
+
+type PeekTable = "profiles" | "recipes" | "diets" | "resources" | "leads";
 const PEEK_TABLE: Record<string, PeekTable> = {
   Clientes: "profiles",
   Recetas: "recipes",
   Dietas: "diets",
   Recursos: "resources",
+  Solicitudes: "leads",
 };
 
 // Solo las columnas con datos introducidos por el usuario (se ocultan id,
@@ -952,6 +1069,7 @@ const PEEK_COLUMNS: Record<PeekTable, string[]> = {
   recipes: ["meal", "title", "content", "ingredients"],
   diets: ["week_number", "day_of_week", "meal", "content"],
   resources: ["kind", "title", "url", "mime_type", "size_bytes"],
+  leads: ["name", "email", "phone", "message", "source", "handled", "created_at"],
 };
 
 const COLUMN_LABELS: Record<string, string> = {
@@ -976,11 +1094,25 @@ const COLUMN_LABELS: Record<string, string> = {
   url: "Enlace",
   mime_type: "Tipo de archivo",
   size_bytes: "Tamaño",
+  message: "Mensaje",
+  source: "Origen",
+  handled: "Atendido",
+  created_at: "Fecha",
 };
 
 function DashboardCards() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [peek, setPeek] = useState<string | null>(null);
+  const { data: pendingLeads } = useQuery({
+    queryKey: ["leads-pending-count"],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from("leads")
+        .select("*", { count: "exact", head: true })
+        .eq("handled", false);
+      return count ?? 0;
+    },
+  });
 
   return (
     <div className="w-full max-w-6xl duration-500 animate-in fade-in zoom-in-95">
@@ -1011,8 +1143,13 @@ function DashboardCards() {
                     onClick={() => setExpanded(c.label)}
                     className="group flex h-full min-h-[220px] w-full flex-col items-start p-7 text-left"
                   >
-                    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-card text-foreground shadow-[var(--shadow-elevated)]">
+                    <span className="relative grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-card text-foreground shadow-[var(--shadow-elevated)]">
                       <c.icon className="h-5 w-5" />
+                      {c.label === "Solicitudes" && (pendingLeads ?? 0) > 0 && (
+                        <span className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-[#E84A5F] px-1 text-[10px] font-bold text-white shadow-[var(--shadow-soft)]">
+                          {pendingLeads}
+                        </span>
+                      )}
                     </span>
                     {isCollapsed ? (
                       <span className="mt-4 hidden text-xs font-medium text-foreground [writing-mode:vertical-rl] md:inline">
@@ -1160,6 +1297,8 @@ function ExpandedCard({ card, onClose }: { card: DashCard; onClose: () => void }
           <DietasPanel />
         ) : card.label === "Recursos" ? (
           <RecursosPanel />
+        ) : card.label === "Solicitudes" ? (
+          <SolicitudesPanel />
         ) : (
           <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 text-center">
             <p className="max-w-sm text-sm text-muted-foreground">
