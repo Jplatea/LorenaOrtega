@@ -1241,8 +1241,8 @@ function PatientMeal({ content }: { content: string }) {
           )}
           <ul className="space-y-0.5">
             {foods.map((f, fi) => (
-              <li key={fi} className="flex gap-1.5 text-[11.5px] leading-snug text-foreground">
-                <span className="mt-[6px] h-1 w-1 shrink-0 rounded-full bg-primary/50" />
+              <li key={fi} className="flex gap-1.5 text-[12.5px] leading-snug text-foreground">
+                <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-primary/50" />
                 <span>{f}</span>
               </li>
             ))}
@@ -1407,13 +1407,13 @@ function PatientPortal() {
                       <p className="mb-1.5 text-sm font-semibold text-primary lg:text-center">{d.label}</p>
                       {hasNutrients && macro.kcal > 0 && <PatientDayNutrition macro={macro} />}
                     </div>
-                    {/* Comidas del día en horizontal */}
-                    <div className="flex flex-1 gap-2.5 overflow-x-auto pb-1">
+                    {/* Comidas del día: columnas de igual ancho que cubren todo el ancho */}
+                    <div
+                      className="grid flex-1 gap-2.5"
+                      style={{ gridTemplateColumns: `repeat(${meals.length}, minmax(0, 1fr))` }}
+                    >
                       {meals.map(({ meal, content }) => (
-                        <div
-                          key={meal.id}
-                          className="w-[164px] shrink-0 rounded-xl bg-card p-2.5 shadow-[var(--shadow-soft)]"
-                        >
+                        <div key={meal.id} className="min-w-0 rounded-xl bg-card p-2.5 shadow-[var(--shadow-soft)]">
                           <p className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
                             {meal.label}
                           </p>
