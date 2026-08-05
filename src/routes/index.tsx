@@ -40,6 +40,7 @@ import {
   ChevronUp,
   ChevronDown,
   Search,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -1326,12 +1327,13 @@ function PatientPortal() {
   const qc = useQueryClient();
   const { data: me } = useCurrentUser();
   const [week, setWeek] = useState(1);
-  const [pwOpen, setPwOpen] = useState(false);
   const [newPw, setNewPw] = useState("");
   const [newPw2, setNewPw2] = useState("");
   const [pwSaving, setPwSaving] = useState(false);
 
-  // Mi perfil (editable por el propio paciente)
+  // Panel "Mi perfil" (icono arriba a la derecha) con pestañas de datos/seguridad.
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileTab, setProfileTab] = useState<"datos" | "seguridad">("datos");
   const [profile, setProfile] = useState({ first_name: "", last_name: "", email: "", phone: "", address: "" });
   const [profileSaving, setProfileSaving] = useState(false);
   useEffect(() => {
@@ -1402,7 +1404,7 @@ function PatientPortal() {
     toast.success("Contraseña actualizada ✓");
     setNewPw("");
     setNewPw2("");
-    setPwOpen(false);
+    setProfileOpen(false);
   }
 
   const { data: diet, isLoading } = useQuery({
@@ -1445,9 +1447,24 @@ function PatientPortal() {
 
   return (
     <div className="w-full max-w-[1600px] space-y-5 duration-500 animate-in fade-in zoom-in-95">
-      <div className="text-center">
-        <h2 className="text-2xl font-semibold text-foreground">Hola, {me?.profile?.first_name ?? ""}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Tu plan nutricional y seguimiento</p>
+      <div className="relative flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-semibold text-foreground">Hola, {me?.profile?.first_name ?? ""}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Tu plan nutricional y seguimiento</p>
+        </div>
+        {/* Cuenta / Mi perfil (arriba a la derecha) */}
+        <button
+          type="button"
+          onClick={() => {
+            setProfileTab("datos");
+            setProfileOpen(true);
+          }}
+          aria-label="Mi perfil"
+          title="Mi perfil"
+          className="absolute right-0 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-primary-soft text-sm font-semibold text-foreground shadow-[var(--shadow-elevated)] transition hover:opacity-90"
+        >
+          {((profile.first_name?.[0] ?? "") + (profile.last_name?.[0] ?? "")).toUpperCase() || <User className="h-5 w-5" />}
+        </button>
       </div>
 
       {/* Dieta: una columna por día, a todo lo ancho */}
@@ -1542,99 +1559,137 @@ function PatientPortal() {
         </section>
       )}
 
-      {/* Mi perfil: datos editables por el paciente + contraseña */}
-      <section className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-float)]">
-        <h3 className="text-base font-semibold text-foreground">Mi perfil</h3>
-        <p className="text-xs text-muted-foreground">Mantén tus datos de contacto al día.</p>
-
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label className="text-xs">Nombre</Label>
-            <Input
-              value={profile.first_name}
-              onChange={(e) => setProfile((f) => ({ ...f, first_name: e.target.value }))}
-              className="bg-card shadow-[var(--shadow-soft)]"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Apellidos</Label>
-            <Input
-              value={profile.last_name}
-              onChange={(e) => setProfile((f) => ({ ...f, last_name: e.target.value }))}
-              className="bg-card shadow-[var(--shadow-soft)]"
-            />
-          </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label className="text-xs">Correo</Label>
-            <Input
-              type="email"
-              value={profile.email}
-              onChange={(e) => setProfile((f) => ({ ...f, email: e.target.value }))}
-              className="bg-card shadow-[var(--shadow-soft)]"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Teléfono</Label>
-            <Input
-              value={profile.phone}
-              onChange={(e) => setProfile((f) => ({ ...f, phone: e.target.value }))}
-              className="bg-card shadow-[var(--shadow-soft)]"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Dirección</Label>
-            <Input
-              value={profile.address}
-              onChange={(e) => setProfile((f) => ({ ...f, address: e.target.value }))}
-              className="bg-card shadow-[var(--shadow-soft)]"
-            />
-          </div>
-        </div>
-        <div className="mt-3 flex justify-end">
-          <Button size="sm" onClick={saveProfile} disabled={profileSaving}>
-            {profileSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar cambios
-          </Button>
-        </div>
-
-        {/* Contraseña */}
-        <div className="mt-5 border-t border-border pt-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-foreground">Contraseña</p>
-              <p className="text-xs text-muted-foreground">Cambia tu contraseña de acceso.</p>
-            </div>
-            <Button size="sm" variant="outline" onClick={() => setPwOpen((v) => !v)} className="shrink-0">
-              <Lock className="h-4 w-4" /> Cambiar contraseña
-            </Button>
-          </div>
-          {pwOpen && (
-            <div className="mt-3 space-y-2 sm:max-w-sm">
-              <Input
-                type="password"
-                value={newPw}
-                onChange={(e) => setNewPw(e.target.value)}
-                placeholder="Nueva contraseña (mín. 8 caracteres)"
-                className="bg-card shadow-[var(--shadow-soft)]"
-              />
-              <Input
-                type="password"
-                value={newPw2}
-                onChange={(e) => setNewPw2(e.target.value)}
-                placeholder="Repite la nueva contraseña"
-                className="bg-card shadow-[var(--shadow-soft)]"
-              />
-              <div className="flex justify-end gap-2 pt-1">
-                <Button size="sm" variant="ghost" onClick={() => setPwOpen(false)} disabled={pwSaving}>
-                  Cancelar
-                </Button>
-                <Button size="sm" onClick={changePassword} disabled={pwSaving}>
-                  {pwSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar contraseña
-                </Button>
+      {/* Panel "Mi perfil" (modal), con pestañas Mis datos / Seguridad */}
+      {profileOpen && (
+        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto p-4 py-10 duration-200 animate-in fade-in">
+          <button
+            type="button"
+            aria-label="Cerrar"
+            onClick={() => setProfileOpen(false)}
+            className="absolute inset-0 bg-foreground/30 backdrop-blur-sm"
+          />
+          <div className="relative z-10 w-full max-w-md overflow-hidden rounded-3xl bg-card shadow-[var(--shadow-float)] duration-300 animate-in zoom-in-95">
+            <header className="flex items-center gap-3 border-b border-border px-5 py-4">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary-soft text-sm font-semibold text-foreground">
+                {((profile.first_name?.[0] ?? "") + (profile.last_name?.[0] ?? "")).toUpperCase() || (
+                  <User className="h-5 w-5" />
+                )}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-foreground">
+                  {profile.first_name} {profile.last_name}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">{profile.email}</p>
               </div>
+              <button
+                type="button"
+                onClick={() => setProfileOpen(false)}
+                aria-label="Cerrar"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </header>
+
+            {/* Pestañas */}
+            <div className="flex gap-1 px-5 pt-4">
+              {(["datos", "seguridad"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setProfileTab(t)}
+                  className={cn(
+                    "rounded-full px-3 py-1.5 text-xs font-medium transition",
+                    profileTab === t
+                      ? "bg-primary text-primary-foreground shadow-[var(--shadow-soft)]"
+                      : "bg-secondary/60 text-foreground hover:bg-secondary",
+                  )}
+                >
+                  {t === "datos" ? "Mis datos" : "Mi seguridad"}
+                </button>
+              ))}
             </div>
-          )}
+
+            <div className="px-5 pb-5 pt-4">
+              {profileTab === "datos" ? (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Nombre</Label>
+                      <Input
+                        value={profile.first_name}
+                        onChange={(e) => setProfile((f) => ({ ...f, first_name: e.target.value }))}
+                        className="bg-card shadow-[var(--shadow-soft)]"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Apellidos</Label>
+                      <Input
+                        value={profile.last_name}
+                        onChange={(e) => setProfile((f) => ({ ...f, last_name: e.target.value }))}
+                        className="bg-card shadow-[var(--shadow-soft)]"
+                      />
+                    </div>
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <Label className="text-xs">Correo</Label>
+                      <Input
+                        type="email"
+                        value={profile.email}
+                        onChange={(e) => setProfile((f) => ({ ...f, email: e.target.value }))}
+                        className="bg-card shadow-[var(--shadow-soft)]"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Teléfono</Label>
+                      <Input
+                        value={profile.phone}
+                        onChange={(e) => setProfile((f) => ({ ...f, phone: e.target.value }))}
+                        className="bg-card shadow-[var(--shadow-soft)]"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Dirección</Label>
+                      <Input
+                        value={profile.address}
+                        onChange={(e) => setProfile((f) => ({ ...f, address: e.target.value }))}
+                        className="bg-card shadow-[var(--shadow-soft)]"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <Button size="sm" onClick={saveProfile} disabled={profileSaving}>
+                      {profileSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar cambios
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Elige una nueva contraseña de acceso (mín. 8 caracteres).</p>
+                  <Input
+                    type="password"
+                    value={newPw}
+                    onChange={(e) => setNewPw(e.target.value)}
+                    placeholder="Nueva contraseña"
+                    className="bg-card shadow-[var(--shadow-soft)]"
+                  />
+                  <Input
+                    type="password"
+                    value={newPw2}
+                    onChange={(e) => setNewPw2(e.target.value)}
+                    placeholder="Repite la nueva contraseña"
+                    className="bg-card shadow-[var(--shadow-soft)]"
+                  />
+                  <div className="flex justify-end pt-1">
+                    <Button size="sm" onClick={changePassword} disabled={pwSaving}>
+                      {pwSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />} Guardar contraseña
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-      </section>
+      )}
     </div>
   );
 }
