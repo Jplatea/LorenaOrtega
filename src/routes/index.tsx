@@ -1296,15 +1296,20 @@ function ExpandedCard({
     <div
       className={cn(
         "flex h-full min-h-[360px] flex-col duration-500 animate-in fade-in slide-in-from-bottom-2",
-        fullscreen ? "max-h-none p-3 sm:p-4" : "max-h-[76vh] p-7 sm:p-9",
+        fullscreen ? "max-h-none p-2 sm:p-3" : "max-h-[76vh] p-7 sm:p-9",
       )}
     >
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-card text-foreground shadow-[var(--shadow-elevated)]">
-            <card.icon className="h-5 w-5" />
+          <span
+            className={cn(
+              "grid place-items-center rounded-2xl bg-card text-foreground shadow-[var(--shadow-elevated)]",
+              fullscreen ? "h-8 w-8" : "h-11 w-11",
+            )}
+          >
+            <card.icon className={fullscreen ? "h-4 w-4" : "h-5 w-5"} />
           </span>
-          <h3 className="text-xl font-semibold text-foreground">{card.label}</h3>
+          <h3 className={cn("font-semibold text-foreground", fullscreen ? "text-base" : "text-xl")}>{card.label}</h3>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -1327,7 +1332,12 @@ function ExpandedCard({
         </div>
       </div>
 
-      <div className={cn("min-h-0 flex-1 overflow-y-auto pr-1", fullscreen ? "mt-2" : "mt-6")}>
+      <div
+        className={cn(
+          "min-h-0 flex-1 pr-1",
+          fullscreen ? "mt-1 flex flex-col overflow-hidden" : "mt-6 overflow-y-auto",
+        )}
+      >
         {card.label === "Clientes" ? (
           <ClientesPanel />
         ) : card.label === "Recetas" ? (
@@ -2456,7 +2466,7 @@ function VisualDietBoard({
   };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[290px_1fr]">
+    <div className={cn("gap-4", fullscreen ? "flex min-h-0 flex-1" : "grid lg:grid-cols-[290px_1fr]")}>
       {/* Lista de alimentos BEDCA para el autocompletado de alimentos sueltos */}
       <datalist id="bedca-diet-foods">
         {BEDCA_FOODS.map((f) => (
@@ -2464,7 +2474,7 @@ function VisualDietBoard({
         ))}
       </datalist>
       {/* Paleta de recetas (arrastrables) */}
-      <div className="space-y-3">
+      <div className={cn("space-y-3", fullscreen && "flex w-[290px] shrink-0 flex-col")}>
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -2486,7 +2496,7 @@ function VisualDietBoard({
         <div
           className={cn(
             "space-y-1.5 overflow-y-auto pb-1 pr-1.5",
-            fullscreen ? "max-h-[72vh]" : "max-h-[52vh]",
+            fullscreen ? "min-h-0 flex-1" : "max-h-[52vh]",
           )}
         >
           {palette.length === 0 ? (
@@ -2535,9 +2545,18 @@ function VisualDietBoard({
       </div>
 
       {/* Comidas del día + análisis nutricional */}
-      <div className="space-y-3">
-        {hasNutrients && dayMacro.kcal > 0 && <DayAnalysis macro={dayMacro} target={target} />}
-        <div className={cn("grid gap-2.5 sm:grid-cols-2", fullscreen && "lg:grid-cols-3")}>
+      <div className={cn("space-y-3", fullscreen && "flex min-h-0 flex-1 flex-col")}>
+        {hasNutrients && dayMacro.kcal > 0 && (
+          <div className="shrink-0">
+            <DayAnalysis macro={dayMacro} target={target} />
+          </div>
+        )}
+        <div
+          className={cn(
+            "grid gap-2.5 sm:grid-cols-2",
+            fullscreen ? "min-h-0 flex-1 overflow-y-auto pr-1 lg:grid-cols-3" : "",
+          )}
+        >
         {MEALS.map((m) => {
           const key = `${activeDay}-${m.id}`;
           const cell = getCell(key);
@@ -2942,7 +2961,7 @@ function DietEditor({
   }
 
   return (
-    <div className="space-y-4">
+    <div className={fullscreen ? "flex h-full min-h-0 flex-col space-y-2" : "space-y-4"}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <button
           type="button"
