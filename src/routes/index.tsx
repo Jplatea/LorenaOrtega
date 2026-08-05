@@ -1330,7 +1330,7 @@ function ExpandedCard({
         {card.label === "Clientes" ? (
           <ClientesPanel />
         ) : card.label === "Recetas" ? (
-          <RecetasPanel />
+          <RecetasPanel fullscreen={fullscreen} />
         ) : card.label === "Dietas" ? (
           <DietasPanel fullscreen={fullscreen} />
         ) : card.label === "Recursos" ? (
@@ -1491,11 +1491,13 @@ function DayAnalysis({ macro, heading = "Análisis del día" }: { macro: Macro; 
 
 function RecipeCard({
   r,
+  fullscreen,
   onEdit,
   onDuplicate,
   onRemove,
 }: {
   r: RecipeItem;
+  fullscreen: boolean;
   onEdit: () => void;
   onDuplicate: () => void;
   onRemove: () => void;
@@ -1505,18 +1507,18 @@ function RecipeCard({
   const known = anyKnown(r.ingredients);
   return (
     <div className="group overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-elevated)] transition hover:shadow-[var(--shadow-float)]">
-      <div className="relative aspect-[16/9] w-full bg-secondary/40">
+      <div className={cn("relative w-full bg-secondary/40", fullscreen ? "h-16" : "h-24")}>
         {img ? (
           <img src={img} alt="" className="h-full w-full object-cover" />
         ) : (
           <div className="grid h-full place-items-center">
-            <BookOpen className="h-8 w-8 text-muted-foreground/40" />
+            <BookOpen className={cn("text-muted-foreground/40", fullscreen ? "h-5 w-5" : "h-7 w-7")} />
           </div>
         )}
-        <span className="absolute left-2 top-2 rounded-full bg-card/90 px-2 py-0.5 text-[10px] font-medium text-foreground shadow-[var(--shadow-soft)]">
+        <span className="absolute left-1.5 top-1.5 rounded-full bg-card/90 px-2 py-0.5 text-[10px] font-medium text-foreground shadow-[var(--shadow-soft)]">
           {MEALS.find((m) => m.id === r.meal)?.label ?? r.meal}
         </span>
-        <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition group-hover:opacity-100">
+        <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-0 transition group-hover:opacity-100">
           {[
             { icon: Pencil, fn: onEdit, label: "Editar" },
             { icon: Copy, fn: onDuplicate, label: "Duplicar" },
@@ -1527,20 +1529,33 @@ function RecipeCard({
               type="button"
               onClick={fn}
               aria-label={label}
-              className="grid h-7 w-7 place-items-center rounded-full bg-card/95 text-muted-foreground shadow-[var(--shadow-soft)] transition hover:text-foreground"
+              className="grid h-6 w-6 place-items-center rounded-full bg-card/95 text-muted-foreground shadow-[var(--shadow-soft)] transition hover:text-foreground"
             >
-              <Icon className="h-3.5 w-3.5" />
+              <Icon className="h-3 w-3" />
             </button>
           ))}
         </div>
       </div>
-      <div className="p-3">
-        <p className="truncate text-sm font-semibold text-foreground">{r.title}</p>
+      <div className={fullscreen ? "p-2" : "p-3"}>
+        <p className={cn("truncate font-semibold text-foreground", fullscreen ? "text-xs" : "text-sm")}>
+          {r.title}
+        </p>
         {known ? (
-          <MacroTiles macro={per100} note="por 100 g" />
+          fullscreen ? (
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px]">
+              <span className="font-semibold" style={{ color: MACRO.kcal }}>
+                {Math.round(per100.kcal)} kcal
+              </span>
+              <span style={{ color: MACRO.fat }}>G {round1(per100.fat)}</span>
+              <span style={{ color: MACRO.carb }}>HC {round1(per100.carb)}</span>
+              <span style={{ color: MACRO.prot }}>P {round1(per100.prot)}</span>
+            </div>
+          ) : (
+            <MacroTiles macro={per100} note="por 100 g" />
+          )
         ) : (
-          <p className="mt-2 text-[11px] text-muted-foreground">
-            Sin datos nutricionales — usa ingredientes de BEDCA con cantidades en gramos.
+          <p className={cn("mt-1 text-muted-foreground", fullscreen ? "text-[10px]" : "text-[11px]")}>
+            Sin datos nutricionales.
           </p>
         )}
       </div>
@@ -1548,7 +1563,7 @@ function RecipeCard({
   );
 }
 
-function RecetasPanel() {
+function RecetasPanel({ fullscreen }: { fullscreen: boolean }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<"new" | RecipeItem | null>(null);
   const [search, setSearch] = useState("");
@@ -1631,11 +1646,17 @@ function RecetasPanel() {
       {isLoading ? (
         <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
       ) : filtered.length > 0 ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div
+          className={cn(
+            "grid gap-3",
+            fullscreen ? "grid-cols-2 lg:grid-cols-4 xl:grid-cols-5" : "sm:grid-cols-2 xl:grid-cols-3",
+          )}
+        >
           {filtered.map((r) => (
             <RecipeCard
               key={r.id}
               r={r}
+              fullscreen={fullscreen}
               onEdit={() => setEditing(r)}
               onDuplicate={() => duplicate(r)}
               onRemove={() => remove(r)}
