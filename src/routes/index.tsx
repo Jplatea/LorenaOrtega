@@ -2334,7 +2334,14 @@ const nameOf = (c: string) => c.split("\n")[0] ?? "";
 const descOf = (c: string) => c.split("\n").slice(1).join("\n");
 const joinND = (n: string, d: string) => (d ? `${n}\n${d}` : n);
 
-type BoardRecipe = { id: string; meal: string; title: string; content: string; imageUrl?: string | null };
+type BoardRecipe = {
+  id: string;
+  meal: string;
+  title: string;
+  content: string;
+  imageUrl?: string | null;
+  ingredients?: { name: string; amount: string }[];
+};
 
 function VisualDietBoard({
   activeDay,
@@ -2476,34 +2483,53 @@ function VisualDietBoard({
         ) : (
           <p className="text-xs text-muted-foreground">Pulsa una comida para filtrar sus recetas, o arrastra a cualquiera.</p>
         )}
-        <div className="max-h-[62vh] space-y-2 overflow-auto pr-1">
+        <div
+          className={cn(
+            "space-y-1.5 overflow-y-auto pb-1 pr-1.5",
+            fullscreen ? "max-h-[72vh]" : "max-h-[52vh]",
+          )}
+        >
           {palette.length === 0 ? (
             <p className="p-4 text-center text-sm text-muted-foreground">Sin recetas.</p>
           ) : (
-            palette.map((r) => (
-              <div
-                key={r.id}
-                draggable
-                onDragStart={(e) => e.dataTransfer.setData("text/plain", r.id)}
-                className="cursor-grab rounded-xl border border-border bg-card p-3 shadow-[var(--shadow-elevated)] transition hover:-translate-y-0.5 active:cursor-grabbing"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-primary-soft text-foreground">
-                    {r.imageUrl ? (
-                      <img src={r.imageUrl} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <BookOpen className="h-4 w-4" />
-                    )}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-foreground">{r.title}</p>
-                    <p className="truncate text-[11px] text-muted-foreground">
-                      {MEALS.find((m) => m.id === r.meal)?.label ?? r.meal}
-                    </p>
+            palette.map((r) => {
+              const per100 = macrosPer100g(r.ingredients ?? []);
+              const known = anyKnown(r.ingredients ?? []);
+              return (
+                <div
+                  key={r.id}
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData("text/plain", r.id)}
+                  className="cursor-grab rounded-xl border border-border bg-card p-2 shadow-[var(--shadow-elevated)] transition hover:-translate-y-0.5 active:cursor-grabbing"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-lg bg-primary-soft text-foreground">
+                      {r.imageUrl ? (
+                        <img src={r.imageUrl} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <BookOpen className="h-4 w-4" />
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-medium leading-tight text-foreground">{r.title}</p>
+                      <p className="truncate text-[10px] text-muted-foreground">
+                        {MEALS.find((m) => m.id === r.meal)?.label ?? r.meal}
+                      </p>
+                    </div>
                   </div>
+                  {known && (
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px]">
+                      <span className="font-semibold" style={{ color: MACRO.kcal }}>
+                        {Math.round(per100.kcal)} kcal
+                      </span>
+                      <span style={{ color: MACRO.fat }}>G {round1(per100.fat)}</span>
+                      <span style={{ color: MACRO.carb }}>HC {round1(per100.carb)}</span>
+                      <span style={{ color: MACRO.prot }}>P {round1(per100.prot)}</span>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
