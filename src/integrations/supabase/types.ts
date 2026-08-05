@@ -127,6 +127,42 @@ export type Database = {
         }
         Relationships: []
       }
+      measurements: {
+        Row: {
+          body_fat: number | null
+          created_at: string
+          date: string
+          hip: number | null
+          id: string
+          note: string | null
+          patient_id: string
+          waist: number | null
+          weight: number | null
+        }
+        Insert: {
+          body_fat?: number | null
+          created_at?: string
+          date?: string
+          hip?: number | null
+          id?: string
+          note?: string | null
+          patient_id: string
+          waist?: number | null
+          weight?: number | null
+        }
+        Update: {
+          body_fat?: number | null
+          created_at?: string
+          date?: string
+          hip?: number | null
+          id?: string
+          note?: string | null
+          patient_id?: string
+          waist?: number | null
+          weight?: number | null
+        }
+        Relationships: []
+      }
       patient_documents: {
         Row: {
           category: Database["public"]["Enums"]["document_category"]

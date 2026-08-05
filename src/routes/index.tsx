@@ -3646,6 +3646,160 @@ function NewClientForm({ onCancel, onCreated }: { onCancel: () => void; onCreate
   );
 }
 
+function WeightChart({ points }: { points: { date: string; weight: number }[] }) {
+  if (points.length < 2) return null;
+  const w = 100;
+  const h = 34;
+  const pad = 3;
+  const ws = points.map((p) => p.weight);
+  const min = Math.min(...ws);
+  const max = Math.max(...ws);
+  const range = max - min || 1;
+  const x = (i: number) => pad + (i / (points.length - 1)) * (w - 2 * pad);
+  const y = (v: number) => pad + (1 - (v - min) / range) * (h - 2 * pad);
+  const d = points.map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)} ${y(p.weight).toFixed(1)}`).join(" ");
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="mt-1 h-24 w-full">
+      <path d={d} fill="none" stroke="#5E92C9" strokeWidth={0.7} strokeLinejoin="round" strokeLinecap="round" />
+      {points.map((p, i) => (
+        <circle key={i} cx={x(i)} cy={y(p.weight)} r={0.9} fill="#5E92C9" />
+      ))}
+    </svg>
+  );
+}
+
+function ProgressSection({ clientId }: { clientId: string }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const empty = { date: new Date().toISOString().slice(0, 10), weight: "", body_fat: "", waist: "", hip: "", note: "" };
+  const [form, setForm] = useState(empty);
+  const set = (k: keyof typeof empty) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const { data: rows } = useQuery({
+    queryKey: ["measurements", clientId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("measurements")
+        .select("*")
+        .eq("patient_id", clientId)
+        .order("date", { ascending: true });
+      return data ?? [];
+    },
+  });
+
+  const num = (s: string) => (s.trim() ? Number(s.replace(",", ".")) : null);
+  async function add(e: React.FormEvent) {
+    e.preventDefault();
+    const { error } = await supabase.from("measurements").insert({
+      patient_id: clientId,
+      date: form.date,
+      weight: num(form.weight),
+      body_fat: num(form.body_fat),
+      waist: num(form.waist),
+      hip: num(form.hip),
+      note: form.note.trim() || null,
+    });
+    if (error) {
+      toast.error("No se pudo guardar", { description: error.message });
+      return;
+    }
+    setForm(empty);
+    setOpen(false);
+    qc.invalidateQueries({ queryKey: ["measurements", clientId] });
+    toast.success("Medición guardada ✓");
+  }
+  async function remove(mid: string) {
+    await supabase.from("measurements").delete().eq("id", mid);
+    qc.invalidateQueries({ queryKey: ["measurements", clientId] });
+  }
+  const fmtDate = (s: string) =>
+    new Date(s).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "2-digit" });
+
+  const weightPoints = (rows ?? [])
+    .filter((r) => r.weight != null)
+    .map((r) => ({ date: r.date, weight: Number(r.weight) }));
+  const first = weightPoints[0];
+  const last = weightPoints[weightPoints.length - 1];
+  const delta = first && last ? round1(last.weight - first.weight) : null;
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-elevated)]">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-foreground">Progreso</p>
+        <Button size="sm" variant="outline" onClick={() => setOpen((v) => !v)}>
+          <Plus className="h-4 w-4" /> Medición
+        </Button>
+      </div>
+
+      {open && (
+        <form onSubmit={add} className="mt-3 grid gap-2 sm:grid-cols-3">
+          <Input type="date" value={form.date} onChange={set("date")} className="bg-card shadow-[var(--shadow-soft)]" />
+          <Input value={form.weight} onChange={set("weight")} inputMode="decimal" placeholder="Peso (kg)" className="bg-card shadow-[var(--shadow-soft)]" />
+          <Input value={form.body_fat} onChange={set("body_fat")} inputMode="decimal" placeholder="% grasa" className="bg-card shadow-[var(--shadow-soft)]" />
+          <Input value={form.waist} onChange={set("waist")} inputMode="decimal" placeholder="Cintura (cm)" className="bg-card shadow-[var(--shadow-soft)]" />
+          <Input value={form.hip} onChange={set("hip")} inputMode="decimal" placeholder="Cadera (cm)" className="bg-card shadow-[var(--shadow-soft)]" />
+          <Input value={form.note} onChange={set("note")} placeholder="Nota (opcional)" className="bg-card shadow-[var(--shadow-soft)]" />
+          <div className="flex justify-end gap-2 sm:col-span-3">
+            <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" size="sm">
+              Guardar medición
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {weightPoints.length >= 2 && (
+        <div className="mt-3">
+          <div className="flex items-baseline justify-between text-xs">
+            <span className="text-muted-foreground">Peso (kg)</span>
+            {delta != null && (
+              <span className={cn("font-semibold", delta <= 0 ? "text-primary" : "text-destructive")}>
+                {delta > 0 ? "+" : ""}
+                {delta} kg desde el inicio
+              </span>
+            )}
+          </div>
+          <WeightChart points={weightPoints} />
+        </div>
+      )}
+
+      {rows && rows.length > 0 ? (
+        <ul className="mt-3 divide-y divide-border text-sm">
+          {[...rows].reverse().map((r) => (
+            <li key={r.id} className="flex items-center gap-3 py-2">
+              <span className="w-16 shrink-0 text-xs text-muted-foreground">{fmtDate(r.date)}</span>
+              <span className="flex flex-1 flex-wrap gap-x-3 gap-y-0.5 text-foreground">
+                {r.weight != null && (
+                  <span>
+                    <b>{r.weight}</b> kg
+                  </span>
+                )}
+                {r.body_fat != null && <span className="text-muted-foreground">{r.body_fat}% grasa</span>}
+                {r.waist != null && <span className="text-muted-foreground">cintura {r.waist}</span>}
+                {r.hip != null && <span className="text-muted-foreground">cadera {r.hip}</span>}
+                {r.note && <span className="text-muted-foreground">· {r.note}</span>}
+              </span>
+              <button
+                type="button"
+                onClick={() => remove(r.id)}
+                aria-label="Eliminar"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-destructive transition hover:opacity-80"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">Aún no hay mediciones. Añade la primera con “Medición”.</p>
+      )}
+    </div>
+  );
+}
+
 function ClientDetail({ id, onBack, onSaved }: { id: string; onBack: () => void; onSaved: () => void }) {
   const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
@@ -3795,6 +3949,8 @@ function ClientDetail({ id, onBack, onSaved }: { id: string; onBack: () => void;
               </Button>
             </div>
           </form>
+
+          <ProgressSection clientId={id} />
         </>
       )}
     </div>
