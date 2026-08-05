@@ -52,7 +52,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Reveal } from "@/components/reveal";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { createPatient } from "@/lib/patients.functions";
+import { createPatient, resetPatientPassword } from "@/lib/patients.functions";
 import { MEALS, DAYS } from "@/lib/domain";
 import { ensureIngredients, renderIngredients } from "@/lib/recipes";
 import { parseMeal, serializeMeal, renderMeal, type MealValue } from "@/lib/meal-options";
@@ -4161,7 +4161,7 @@ function NewClientForm({
           <p className="mt-1 text-sm text-muted-foreground">
             Comparte esta contraseña temporal con el cliente (se le pedirá cambiarla al entrar).
           </p>
-          <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3">
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border-2 border-[#E0A64B] bg-[#E0A64B]/[0.06] px-4 py-3">
             <span className="font-mono text-lg text-foreground">{result.tempPassword}</span>
             <Button
               variant="outline"
@@ -4205,7 +4205,7 @@ function NewClientForm({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Mínimo 8 caracteres (opcional)"
-              className="bg-card shadow-[var(--shadow-elevated)]"
+              className="border-2 border-[#E0A64B] bg-card shadow-[var(--shadow-elevated)] focus-visible:ring-[#E0A64B]"
             />
             <Button type="button" variant="outline" onClick={() => setPassword(genClientPassword(12))}>
               <RefreshCw className="h-4 w-4" /> Generar
@@ -4422,6 +4422,9 @@ function ClientDetail({
 }) {
   const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
+  const resetPass = useServerFn(resetPatientPassword);
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwResult, setPwResult] = useState<string | null>(null);
   const { data: p, isLoading } = useQuery({
     queryKey: ["cliente-detalle", id],
     queryFn: async () => {
@@ -4429,6 +4432,21 @@ function ClientDetail({
       return data;
     },
   });
+
+  async function generatePassword() {
+    setPwLoading(true);
+    try {
+      const res = await resetPass({ data: { patient_id: id } });
+      setPwResult(res.tempPassword);
+      toast.success("Contraseña de acceso generada");
+    } catch (err) {
+      toast.error("No se pudo generar la contraseña", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setPwLoading(false);
+    }
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -4485,6 +4503,42 @@ function ClientDetail({
               </div>
               <div className="truncate text-sm text-muted-foreground">{p.email}</div>
             </div>
+          </div>
+
+          {/* Acceso al portal del paciente: generar/restablecer contraseña */}
+          <div className="rounded-2xl border-2 border-[#E0A64B]/60 bg-[#E0A64B]/[0.06] p-4 shadow-[var(--shadow-soft)]">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">Acceso del paciente</p>
+                <p className="text-xs text-muted-foreground">
+                  Genera una contraseña para que {p.first_name || "el paciente"} entre a su panel con{" "}
+                  <span className="font-medium text-foreground">{p.email}</span>. Se le pedirá cambiarla al entrar.
+                </p>
+              </div>
+              <Button size="sm" variant="outline" onClick={generatePassword} disabled={pwLoading} className="shrink-0">
+                {pwLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                {pwResult ? "Regenerar contraseña" : "Generar contraseña"}
+              </Button>
+            </div>
+            {pwResult && (
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border-2 border-[#E0A64B] bg-card px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-[#B07A20]">Contraseña temporal</p>
+                  <span className="font-mono text-lg text-foreground">{pwResult}</span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => {
+                    navigator.clipboard.writeText(pwResult);
+                    toast.success("Copiada");
+                  }}
+                >
+                  <Copy className="h-4 w-4" /> Copiar
+                </Button>
+              </div>
+            )}
           </div>
 
           <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-2">
