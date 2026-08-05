@@ -1325,6 +1325,35 @@ function PatientDayNutrition({ macro }: { macro: Macro }) {
 function PatientPortal() {
   const { data: me } = useCurrentUser();
   const [week, setWeek] = useState(1);
+  const [pwOpen, setPwOpen] = useState(false);
+  const [newPw, setNewPw] = useState("");
+  const [newPw2, setNewPw2] = useState("");
+  const [pwSaving, setPwSaving] = useState(false);
+
+  async function changePassword() {
+    if (newPw.length < 8) {
+      toast.error("La contraseña debe tener al menos 8 caracteres");
+      return;
+    }
+    if (newPw !== newPw2) {
+      toast.error("Las contraseñas no coinciden");
+      return;
+    }
+    setPwSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: newPw });
+    if (!error && me?.id) {
+      await supabase.from("profiles").update({ must_change_password: false } as never).eq("id", me.id);
+    }
+    setPwSaving(false);
+    if (error) {
+      toast.error("No se pudo cambiar la contraseña", { description: error.message });
+      return;
+    }
+    toast.success("Contraseña actualizada ✓");
+    setNewPw("");
+    setNewPw2("");
+    setPwOpen(false);
+  }
 
   const { data: diet, isLoading } = useQuery({
     queryKey: ["portal-diet", week],
@@ -1462,6 +1491,45 @@ function PatientPortal() {
           <WeightChart points={weightPoints} />
         </section>
       )}
+
+      {/* Seguridad: cambiar contraseña */}
+      <section className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-float)]">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-foreground">Seguridad</h3>
+            <p className="text-xs text-muted-foreground">Cambia tu contraseña de acceso.</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => setPwOpen((v) => !v)} className="shrink-0">
+            <Lock className="h-4 w-4" /> Cambiar contraseña
+          </Button>
+        </div>
+        {pwOpen && (
+          <div className="mt-4 space-y-2 sm:max-w-sm">
+            <Input
+              type="password"
+              value={newPw}
+              onChange={(e) => setNewPw(e.target.value)}
+              placeholder="Nueva contraseña (mín. 8 caracteres)"
+              className="bg-card shadow-[var(--shadow-soft)]"
+            />
+            <Input
+              type="password"
+              value={newPw2}
+              onChange={(e) => setNewPw2(e.target.value)}
+              placeholder="Repite la nueva contraseña"
+              className="bg-card shadow-[var(--shadow-soft)]"
+            />
+            <div className="flex justify-end gap-2 pt-1">
+              <Button size="sm" variant="ghost" onClick={() => setPwOpen(false)} disabled={pwSaving}>
+                Cancelar
+              </Button>
+              <Button size="sm" onClick={changePassword} disabled={pwSaving}>
+                {pwSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar contraseña
+              </Button>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
@@ -3581,20 +3649,20 @@ function DietEditor({
   async function syncDietPdf() {
     try {
       const payload = buildPdfPayload();
-      const title = `Dieta — Semana ${week}`;
-      if (!payload) {
-        // Dieta vacía: pide retirar el PDF de esa semana (base64 vacío).
-        await saveDietPdfFn({ data: { patient_id: patientId, week, title, base64: "" } });
-        qc.invalidateQueries({ queryKey: ["client-docs", patientId] });
-        return;
-      }
-      const { blob } = await buildDietPdfBlob({ patientName, weekNumber: week, rows: payload.rows, dayNutrition: payload.dayNutrition });
-      const base64 = await blobToBase64(blob);
-      // La subida la hace el servidor con service_role (fiable, sin RLS del cliente).
-      await saveDietPdfFn({ data: { patient_id: patientId, week, title, base64 } });
+      // El servidor genera el PDF y lo sube con service_role (fiable). Si la
+      // dieta está vacía, rows: [] hace que retire el PDF de esa semana.
+      await saveDietPdfFn({
+        data: {
+          patient_id: patientId,
+          week,
+          patientName,
+          rows: payload?.rows ?? [],
+          dayNutrition: payload?.dayNutrition,
+        },
+      });
       qc.invalidateQueries({ queryKey: ["client-docs", patientId] });
       qc.invalidateQueries({ queryKey: ["portal-docs"] });
-      toast.success("Copia PDF de la dieta guardada en el expediente ✓");
+      if (payload) toast.success("Copia PDF de la dieta guardada en el expediente ✓");
     } catch (err) {
       // El guardado de la dieta no debe fallar por el PDF; solo avisamos con el motivo.
       toast.warning("Dieta guardada, pero no se pudo añadir el PDF al expediente", {

@@ -112,8 +112,22 @@ export const saveDietPdf = createServerFn({ method: "POST" })
       .object({
         patient_id: z.string().uuid(),
         week: z.number().int().positive(),
-        title: z.string().min(1).max(200),
-        base64: z.string().default(""),
+        patientName: z.string().min(1).max(200),
+        rows: z
+          .array(z.object({ day_of_week: z.number().int(), meal: z.string(), content: z.string() }))
+          .default([]),
+        dayNutrition: z
+          .array(
+            z.object({
+              day: z.number().int(),
+              kcal: z.number(),
+              prot: z.number(),
+              fat: z.number(),
+              carb: z.number(),
+              fiber: z.number(),
+            }),
+          )
+          .optional(),
       })
       .parse(data),
   )
@@ -121,16 +135,23 @@ export const saveDietPdf = createServerFn({ method: "POST" })
     await assertAdmin(context.supabase, context.userId);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const path = `${data.patient_id}/dieta-semana-${data.week}.pdf`;
+    const title = `Dieta — Semana ${data.week}`;
 
-    if (!data.base64) {
+    if (data.rows.length === 0) {
       await supabaseAdmin.storage.from("patient-documents").remove([path]);
       await supabaseAdmin.from("patient_documents").delete().eq("patient_id", data.patient_id).eq("file_path", path);
       return { ok: true, removed: true };
     }
 
-    const bin = atob(data.base64);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    // El PDF se genera aquí, en el servidor (jsPDF funciona en Node) para no
+    // depender de la generación/subida en el navegador.
+    const { buildDietPdfBytes } = await import("@/lib/pdf-export");
+    const bytes = await buildDietPdfBytes({
+      patientName: data.patientName,
+      weekNumber: data.week,
+      rows: data.rows as never,
+      dayNutrition: data.dayNutrition,
+    });
 
     const { error: upErr } = await supabaseAdmin.storage
       .from("patient-documents")
@@ -146,14 +167,14 @@ export const saveDietPdf = createServerFn({ method: "POST" })
     if (existing?.id) {
       const { error } = await supabaseAdmin
         .from("patient_documents")
-        .update({ title: data.title, mime_type: "application/pdf", size_bytes: bytes.length })
+        .update({ title: title, mime_type: "application/pdf", size_bytes: bytes.length })
         .eq("id", existing.id);
       if (error) throw new Error(error.message);
     } else {
       const { error } = await supabaseAdmin.from("patient_documents").insert({
         patient_id: data.patient_id,
         uploaded_by: context.userId,
-        title: data.title,
+        title: title,
         file_path: path,
         mime_type: "application/pdf",
         size_bytes: bytes.length,

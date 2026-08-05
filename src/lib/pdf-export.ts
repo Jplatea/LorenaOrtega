@@ -429,3 +429,14 @@ export async function buildDietPdfBlob(opts: {
   const blob = doc.output("blob");
   return { blob, filename };
 }
+
+/** Bytes del PDF (para generar en el servidor y subir con service_role). */
+export async function buildDietPdfBytes(opts: {
+  patientName: string;
+  weekNumber: number;
+  rows: DietRow[];
+  dayNutrition?: DayNutrition[];
+}): Promise<Uint8Array> {
+  const doc = await renderPdf(opts);
+  return new Uint8Array(doc.output("arraybuffer"));
+}
