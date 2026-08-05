@@ -3423,7 +3423,21 @@ function DietEditor({
         toast.error("La dieta está vacía", { description: "Añade alguna comida antes de descargar." });
         return;
       }
-      await buildDietPdf({ patientName, weekNumber: week, rows: pdfRows });
+      // Totales nutricionales por día (BEDCA) para el resumen del pie del PDF.
+      const dayNutrition = hasNutrients
+        ? DAYS.map((d) => {
+            let acc = zeroMacro();
+            for (const m of MEALS) {
+              for (const opt of getCell(`${d.id}-${m.id}`).options) {
+                const rec = recipes?.find((r) => r.id === opt.recipeId);
+                if (rec) acc = addMacro(acc, macrosForIngredients(rec.ingredients));
+                else if (opt.content.trim()) acc = addMacro(acc, macroForFoodEntry(opt.content));
+              }
+            }
+            return { day: d.id, kcal: acc.kcal, prot: acc.prot, fat: acc.fat, carb: acc.carb, fiber: acc.fiber };
+          })
+        : undefined;
+      await buildDietPdf({ patientName, weekNumber: week, rows: pdfRows, dayNutrition });
     } catch {
       toast.error("No se pudo generar el PDF");
     } finally {
