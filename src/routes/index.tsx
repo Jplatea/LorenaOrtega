@@ -2407,6 +2407,7 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
   const [editing, setEditing] = useState<"new" | RecipeItem | null>(null);
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"card" | "list">("card");
+  const [sortBy, setSortBy] = useState<"name" | "meal">("name");
 
   const { data: recipes, isLoading } = useQuery({
     queryKey: ["recetas-list"],
@@ -2466,6 +2467,15 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
 
   const q = search.trim().toLowerCase();
   const filtered = (recipes ?? []).filter((r) => !q || r.title.toLowerCase().includes(q));
+  const mealIdx = (m: string) => {
+    const i = MEALS.findIndex((x) => x.id === m);
+    return i < 0 ? 99 : i;
+  };
+  const sorted = [...filtered].sort((a, b) =>
+    sortBy === "meal"
+      ? mealIdx(a.meal) - mealIdx(b.meal) || a.title.localeCompare(b.title, "es")
+      : a.title.localeCompare(b.title, "es"),
+  );
 
   const grid = (
     <div
@@ -2474,7 +2484,7 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
         fullscreen ? "grid-cols-2 lg:grid-cols-4 xl:grid-cols-5" : "sm:grid-cols-2 xl:grid-cols-3",
       )}
     >
-      {filtered.map((r) => (
+      {sorted.map((r) => (
         <RecipeCard
           key={r.id}
           r={r}
@@ -2488,8 +2498,8 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
   );
 
   const list = (
-    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-elevated)]">
-      {filtered.map((r) => {
+    <div className="space-y-1.5">
+      {sorted.map((r) => {
         const img = recipeImageUrl(r.image_path);
         const manual = r.kcal != null || r.fat != null || r.carb != null || r.prot != null;
         const per100 = manual
@@ -2499,9 +2509,9 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
         return (
           <div
             key={r.id}
-            className="group flex items-center gap-3 border-b border-border px-3 py-2 transition last:border-0 hover:bg-muted/40"
+            className="group flex items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-2 shadow-[var(--shadow-soft)] transition hover:shadow-[var(--shadow-elevated)]"
           >
-            <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-secondary/40">
+            <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-secondary/40">
               {img ? (
                 <img src={img} alt="" className="h-full w-full object-cover" />
               ) : (
@@ -2558,6 +2568,15 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
         searchPlaceholder="Buscar recetas…"
         onClose={onClose}
       >
+        <Select value={sortBy} onValueChange={(v) => setSortBy(v as "name" | "meal")}>
+          <SelectTrigger className="h-9 w-[130px] shrink-0 bg-card shadow-[var(--shadow-soft)]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="name">Por nombre</SelectItem>
+            <SelectItem value="meal">Por comida</SelectItem>
+          </SelectContent>
+        </Select>
         <div className="flex shrink-0 rounded-lg border border-border p-0.5">
           {(
             [
