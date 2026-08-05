@@ -4736,22 +4736,24 @@ function ClientField({
   defaultValue?: string;
 }) {
   // La etiqueta va DENTRO del campo (placeholder), más compacto. Los inputs de
-  // tipo fecha no muestran placeholder, así que llevan una etiqueta pequeña.
+  // tipo fecha no muestran placeholder: empiezan como texto (mostrando la
+  // etiqueta) y al enfocar se convierten en selector de fecha.
   if (type === "date") {
     return (
-      <div className={cn("space-y-1", className)}>
-        <Label htmlFor={`cli-${name}`} className="text-[11px] text-muted-foreground">
-          {label}
-        </Label>
-        <Input
-          id={`cli-${name}`}
-          name={name}
-          type={type}
-          required={required}
-          defaultValue={defaultValue}
-          className="h-9 bg-card shadow-[var(--shadow-elevated)]"
-        />
-      </div>
+      <Input
+        id={`cli-${name}`}
+        name={name}
+        type={defaultValue ? "date" : "text"}
+        required={required}
+        defaultValue={defaultValue}
+        placeholder={required ? `${label} *` : label}
+        aria-label={label}
+        onFocus={(e) => (e.currentTarget.type = "date")}
+        onBlur={(e) => {
+          if (!e.currentTarget.value) e.currentTarget.type = "text";
+        }}
+        className={cn("h-9 bg-card shadow-[var(--shadow-elevated)]", className)}
+      />
     );
   }
   return (
@@ -4854,14 +4856,14 @@ function NewClientForm({
     <form onSubmit={onSubmit} className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
       <PanelToolbar info="Nuevo cliente" onBack={onCancel} onClose={onClose} />
       <div className={cn(fullscreen ? "min-h-0 flex-1 space-y-4 overflow-y-auto pr-1" : "space-y-4")}>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <ClientField label="Nombre" name="first_name" required />
         <ClientField label="Apellidos" name="last_name" required />
-        <ClientField label="Email" name="email" type="email" required className="sm:col-span-2" />
+        <ClientField label="Email" name="email" type="email" required className="sm:col-span-2 lg:col-span-1" />
         <ClientField label="Teléfono" name="phone" />
         <ClientField label="DNI" name="dni" />
         <ClientField label="Dirección" name="address" className="sm:col-span-2" />
-        <div className="space-y-2 sm:col-span-2">
+        <div className="space-y-2 sm:col-span-2 lg:col-span-3">
           <Label htmlFor="cli-pass">Contraseña de acceso</Label>
           <div className="flex gap-2">
             <Input
@@ -4879,24 +4881,24 @@ function NewClientForm({
           <p className="text-xs text-muted-foreground">Si la dejas vacía, se genera una temporal automáticamente.</p>
         </div>
         <ClientField label="Fecha de nacimiento" name="birth_date" type="date" />
-        <div className="space-y-2">
-          <Label>Sexo</Label>
-          <Select name="sex">
-            <SelectTrigger className="w-full bg-card shadow-[var(--shadow-elevated)]">
-              <SelectValue placeholder="Seleccionar…" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="female">Mujer</SelectItem>
-              <SelectItem value="male">Hombre</SelectItem>
-              <SelectItem value="other">Otro</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        <Select name="sex">
+          <SelectTrigger className="h-9 w-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] data-[placeholder]:text-muted-foreground [&:has([data-state=checked])]:text-foreground">
+            <SelectValue placeholder="Sexo" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="female">Mujer</SelectItem>
+            <SelectItem value="male">Hombre</SelectItem>
+            <SelectItem value="other">Otro</SelectItem>
+          </SelectContent>
+        </Select>
         <ClientField label="Altura (cm)" name="height" type="number" step="0.1" />
-        <div className="space-y-2 sm:col-span-2">
-          <Label htmlFor="cli-observations">Observaciones</Label>
-          <Textarea id="cli-observations" name="observations" rows={3} className="bg-card shadow-[var(--shadow-elevated)]" />
-        </div>
+        <Textarea
+          id="cli-observations"
+          name="observations"
+          rows={2}
+          placeholder="Observaciones"
+          className="bg-card shadow-[var(--shadow-elevated)] sm:col-span-2"
+        />
       </div>
 
       <div className="flex justify-end gap-2 pt-2">
@@ -5477,6 +5479,9 @@ function ClientDetail({
               {pwLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
               {pwResult ? "Regenerar contraseña" : "Generar contraseña"}
             </Button>
+            <Button type="submit" form="client-detail-form" size="sm" disabled={saving} className="shrink-0">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar cambios
+            </Button>
           </div>
 
           {pwResult && (
@@ -5499,27 +5504,23 @@ function ClientDetail({
             </div>
           )}
 
-          <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-2">
+          <form id="client-detail-form" onSubmit={onSubmit} className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             <ClientField label="Nombre" name="first_name" defaultValue={p.first_name ?? ""} required />
             <ClientField label="Apellidos" name="last_name" defaultValue={p.last_name ?? ""} required />
             <ClientField label="Teléfono" name="phone" defaultValue={p.phone ?? ""} />
             <ClientField label="DNI" name="dni" defaultValue={p.dni ?? ""} />
             <ClientField label="Dirección" name="address" defaultValue={p.address ?? ""} className="sm:col-span-2" />
             <ClientField label="Fecha de nacimiento" name="birth_date" type="date" defaultValue={p.birth_date ?? ""} />
-            <div className="space-y-2">
-              <Label>Sexo</Label>
-              <Select name="sex" defaultValue={p.sex ?? "none"}>
-                <SelectTrigger className="w-full bg-card shadow-[var(--shadow-elevated)]">
-                  <SelectValue placeholder="—" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">—</SelectItem>
-                  <SelectItem value="female">Mujer</SelectItem>
-                  <SelectItem value="male">Hombre</SelectItem>
-                  <SelectItem value="other">Otro</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Select name="sex" defaultValue={p.sex ?? undefined}>
+              <SelectTrigger className="h-9 w-full bg-card shadow-[var(--shadow-elevated)] data-[placeholder]:text-muted-foreground">
+                <SelectValue placeholder="Sexo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="female">Mujer</SelectItem>
+                <SelectItem value="male">Hombre</SelectItem>
+                <SelectItem value="other">Otro</SelectItem>
+              </SelectContent>
+            </Select>
             <ClientField
               label="Altura (cm)"
               name="height"
@@ -5527,21 +5528,19 @@ function ClientDetail({
               step="0.1"
               defaultValue={p.height != null ? String(p.height) : ""}
             />
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="cli-detail-observations">Observaciones</Label>
-              <Textarea
-                id="cli-detail-observations"
-                name="observations"
-                rows={3}
-                defaultValue={p.observations ?? ""}
-                className="bg-card shadow-[var(--shadow-elevated)]"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <p className="mb-2 mt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <Textarea
+              id="cli-detail-observations"
+              name="observations"
+              rows={2}
+              defaultValue={p.observations ?? ""}
+              placeholder="Observaciones"
+              className="bg-card shadow-[var(--shadow-elevated)] sm:col-span-2"
+            />
+            <div className="sm:col-span-2 lg:col-span-3">
+              <p className="mb-2 mt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Objetivos nutricionales (por día)
               </p>
-              <div className="grid gap-3 sm:grid-cols-4">
+              <div className="grid gap-2 sm:grid-cols-4">
                 <ClientField
                   label="Energía (kcal)"
                   name="target_kcal"
@@ -5570,12 +5569,6 @@ function ClientDetail({
                   defaultValue={p.target_carb != null ? String(p.target_carb) : ""}
                 />
               </div>
-            </div>
-
-            <div className="flex justify-end pt-2 sm:col-span-2">
-              <Button type="submit" disabled={saving}>
-                {saving ? <LoadingBar /> : "Guardar cambios"}
-              </Button>
             </div>
           </form>
 
