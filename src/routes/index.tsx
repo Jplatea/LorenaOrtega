@@ -57,6 +57,15 @@ import { ensureIngredients, renderIngredients } from "@/lib/recipes";
 import { parseMeal, serializeMeal, type MealValue } from "@/lib/meal-options";
 import { buildDietPdf, type DietRow } from "@/lib/pdf-export";
 import BEDCA_FOODS from "@/data/bedca-foods.json";
+import {
+  macrosForIngredients,
+  macrosPer100g,
+  anyKnown,
+  addMacro,
+  zeroMacro,
+  hasNutrients,
+  type Macro,
+} from "@/lib/nutrition";
 import { RecipeCombobox } from "@/components/recipe-combobox";
 
 export const Route = createFileRoute("/")({
@@ -1365,9 +1374,184 @@ function splitAmount(a: string): { amount: string; unit: string } {
   return { amount: t, unit: "gr" };
 }
 
+const MACRO = {
+  kcal: "#8A6FB0", // energía (morado)
+  fat: "#E0A64B", // grasa (ámbar)
+  carb: "#E07E4E", // hidratos (naranja)
+  prot: "#5E92C9", // proteína (azul)
+  fiber: "#5FB98E", // fibra (verde)
+};
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
+function MacroTiles({ macro, note }: { macro: Macro; note?: string }) {
+  const items = [
+    { label: "Energía", val: Math.round(macro.kcal), unit: "kcal", color: MACRO.kcal },
+    { label: "Grasa", val: round1(macro.fat), unit: "g", color: MACRO.fat },
+    { label: "H. Carbono", val: round1(macro.carb), unit: "g", color: MACRO.carb },
+    { label: "Proteína", val: round1(macro.prot), unit: "g", color: MACRO.prot },
+  ];
+  return (
+    <div className="mt-2">
+      {note && <p className="mb-1 text-[10px] text-muted-foreground">{note}</p>}
+      <div className="grid grid-cols-4 gap-1.5">
+        {items.map((it) => (
+          <div key={it.label} className="rounded-lg bg-secondary/40 px-1 py-1 text-center">
+            <span className="block truncate text-[9px] font-medium" style={{ color: it.color }}>
+              {it.label}
+            </span>
+            <span className="block text-xs font-semibold text-foreground">
+              {it.val}
+              <span className="text-[9px] font-normal text-muted-foreground"> {it.unit}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MacroDonut({ macro, size = 92 }: { macro: Macro; size?: number }) {
+  const pK = 4 * macro.prot;
+  const cK = 4 * macro.carb;
+  const fK = 9 * macro.fat;
+  const tot = pK + cK + fK;
+  const r = size / 2 - 7;
+  const C = 2 * Math.PI * r;
+  const segs = tot > 0 ? [
+    { v: cK, c: MACRO.carb },
+    { v: fK, c: MACRO.fat },
+    { v: pK, c: MACRO.prot },
+  ] : [];
+  let offset = 0;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(0,0,0,0.06)" strokeWidth={9} />
+      {segs.map((s, i) => {
+        const len = C * (s.v / tot);
+        const el = (
+          <circle
+            key={i}
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke={s.c}
+            strokeWidth={9}
+            strokeDasharray={`${len} ${C - len}`}
+            strokeDashoffset={-offset}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        );
+        offset += len;
+        return el;
+      })}
+    </svg>
+  );
+}
+
+function DayAnalysis({ macro, heading = "Análisis del día" }: { macro: Macro; heading?: string }) {
+  const bars = [
+    { label: "Grasa", val: macro.fat, color: MACRO.fat },
+    { label: "Hidratos de carbono", val: macro.carb, color: MACRO.carb },
+    { label: "Proteína", val: macro.prot, color: MACRO.prot },
+    { label: "Fibra alimentaria", val: macro.fiber, color: MACRO.fiber },
+  ];
+  const maxG = Math.max(1, macro.fat, macro.carb, macro.prot, macro.fiber);
+  return (
+    <div className="rounded-2xl bg-card p-4 shadow-[var(--shadow-elevated)]">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-foreground">{heading}</p>
+        <p className="text-sm">
+          <span className="font-bold text-foreground">{Math.round(macro.kcal)}</span>{" "}
+          <span className="text-xs text-muted-foreground">kcal</span>
+        </p>
+      </div>
+      <div className="mt-3 flex items-center gap-4">
+        <MacroDonut macro={macro} />
+        <div className="flex-1 space-y-2">
+          {bars.map((b) => (
+            <div key={b.label}>
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="truncate text-muted-foreground">{b.label}</span>
+                <span className="shrink-0 font-semibold text-foreground">{round1(b.val)} g</span>
+              </div>
+              <div className="mt-0.5 h-1.5 w-full overflow-hidden rounded-full bg-secondary/60">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${Math.min(100, (b.val / maxG) * 100)}%`, background: b.color }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RecipeCard({
+  r,
+  onEdit,
+  onDuplicate,
+  onRemove,
+}: {
+  r: RecipeItem;
+  onEdit: () => void;
+  onDuplicate: () => void;
+  onRemove: () => void;
+}) {
+  const img = recipeImageUrl(r.image_path);
+  const per100 = macrosPer100g(r.ingredients);
+  const known = anyKnown(r.ingredients);
+  return (
+    <div className="group overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-elevated)] transition hover:shadow-[var(--shadow-float)]">
+      <div className="relative aspect-[16/9] w-full bg-secondary/40">
+        {img ? (
+          <img src={img} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <div className="grid h-full place-items-center">
+            <BookOpen className="h-8 w-8 text-muted-foreground/40" />
+          </div>
+        )}
+        <span className="absolute left-2 top-2 rounded-full bg-card/90 px-2 py-0.5 text-[10px] font-medium text-foreground shadow-[var(--shadow-soft)]">
+          {MEALS.find((m) => m.id === r.meal)?.label ?? r.meal}
+        </span>
+        <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition group-hover:opacity-100">
+          {[
+            { icon: Pencil, fn: onEdit, label: "Editar" },
+            { icon: Copy, fn: onDuplicate, label: "Duplicar" },
+            { icon: Trash2, fn: onRemove, label: "Eliminar" },
+          ].map(({ icon: Icon, fn, label }) => (
+            <button
+              key={label}
+              type="button"
+              onClick={fn}
+              aria-label={label}
+              className="grid h-7 w-7 place-items-center rounded-full bg-card/95 text-muted-foreground shadow-[var(--shadow-soft)] transition hover:text-foreground"
+            >
+              <Icon className="h-3.5 w-3.5" />
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="p-3">
+        <p className="truncate text-sm font-semibold text-foreground">{r.title}</p>
+        {known ? (
+          <MacroTiles macro={per100} note="por 100 g" />
+        ) : (
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Sin datos nutricionales — usa ingredientes de BEDCA con cantidades en gramos.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RecetasPanel() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<"new" | RecipeItem | null>(null);
+  const [search, setSearch] = useState("");
 
   const { data: recipes, isLoading } = useQuery({
     queryKey: ["recetas-list"],
@@ -1423,72 +1607,46 @@ function RecetasPanel() {
     refresh();
   }
 
+  const q = search.trim().toLowerCase();
+  const filtered = (recipes ?? []).filter((r) => !q || r.title.toLowerCase().includes(q));
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm text-muted-foreground">
-          {isLoading ? "Cargando…" : `${recipes?.length ?? 0} recetas`}
+          {isLoading ? "Cargando…" : `${filtered.length} recetas`}
         </span>
         <Button size="sm" onClick={() => setEditing("new")}>
           <Plus className="h-4 w-4" /> Nueva receta
         </Button>
       </div>
 
-      <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-elevated)]">
-        {isLoading ? (
-          <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
-        ) : recipes && recipes.length > 0 ? (
-          <ul className="divide-y divide-border">
-            {recipes.map((r) => (
-              <li key={r.id} className="flex items-center gap-3 px-4 py-3">
-                <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-primary-soft text-foreground">
-                  {recipeImageUrl(r.image_path) ? (
-                    <img src={recipeImageUrl(r.image_path) ?? ""} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    <BookOpen className="h-4 w-4" />
-                  )}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-foreground">{r.title}</div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {MEALS.find((m) => m.id === r.meal)?.label ?? r.meal}
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setEditing(r)}
-                    aria-label="Editar"
-                    className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition hover:text-foreground"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => duplicate(r)}
-                    aria-label="Duplicar"
-                    className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition hover:text-foreground"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => remove(r)}
-                    aria-label="Eliminar"
-                    className="grid h-8 w-8 place-items-center rounded-lg text-destructive transition hover:opacity-80"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="p-8 text-center text-sm text-muted-foreground">
-            Aún no hay recetas. Pulsa “Nueva receta” para crear la primera.
-          </div>
-        )}
-      </div>
+      <Input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Buscar recetas por nombre…"
+        className="bg-card shadow-[var(--shadow-soft)]"
+      />
+
+      {isLoading ? (
+        <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
+      ) : filtered.length > 0 ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((r) => (
+            <RecipeCard
+              key={r.id}
+              r={r}
+              onEdit={() => setEditing(r)}
+              onDuplicate={() => duplicate(r)}
+              onRemove={() => remove(r)}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-2xl bg-card p-8 text-center text-sm text-muted-foreground shadow-[var(--shadow-elevated)]">
+          {q ? "No hay recetas que coincidan." : "Aún no hay recetas. Pulsa “Nueva receta” para crear la primera."}
+        </div>
+      )}
     </div>
   );
 }
@@ -2143,6 +2301,7 @@ function VisualDietBoard({
   dragOver,
   setDragOver,
   fullscreen,
+  macrosByMeal,
 }: {
   activeDay: number;
   recipes: BoardRecipe[];
@@ -2153,7 +2312,9 @@ function VisualDietBoard({
   dragOver: string | null;
   setDragOver: (v: string | null) => void;
   fullscreen: boolean;
+  macrosByMeal: Record<string, Macro>;
 }) {
+  const dayMacro = MEALS.reduce((a, m) => addMacro(a, macrosByMeal[m.id] ?? zeroMacro()), zeroMacro());
   const [activeMeal, setActiveMeal] = useState<string | null>(null);
   const [customFor, setCustomFor] = useState<string | null>(null);
   const [cName, setCName] = useState("");
@@ -2276,8 +2437,10 @@ function VisualDietBoard({
         </div>
       </div>
 
-      {/* Comidas del día (zonas de soltado) */}
-      <div className={cn("grid gap-2.5 sm:grid-cols-2", fullscreen && "lg:grid-cols-3")}>
+      {/* Comidas del día + análisis nutricional */}
+      <div className="space-y-3">
+        {hasNutrients && dayMacro.kcal > 0 && <DayAnalysis macro={dayMacro} />}
+        <div className={cn("grid gap-2.5 sm:grid-cols-2", fullscreen && "lg:grid-cols-3")}>
         {MEALS.map((m) => {
           const key = `${activeDay}-${m.id}`;
           const cell = getCell(key);
@@ -2428,9 +2591,22 @@ function VisualDietBoard({
                   <Plus className="h-3.5 w-3.5" /> Producto a medida
                 </button>
               )}
+
+              {fullscreen && (macrosByMeal[m.id]?.kcal ?? 0) > 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 border-t border-border/50 pt-1.5 text-[10px]">
+                  <span className="font-semibold" style={{ color: MACRO.kcal }}>
+                    {Math.round(macrosByMeal[m.id].kcal)} kcal
+                  </span>
+                  <span style={{ color: MACRO.fat }}>G {round1(macrosByMeal[m.id].fat)}</span>
+                  <span style={{ color: MACRO.carb }}>HC {round1(macrosByMeal[m.id].carb)}</span>
+                  <span style={{ color: MACRO.prot }}>P {round1(macrosByMeal[m.id].prot)}</span>
+                  <span style={{ color: MACRO.fiber }}>F {round1(macrosByMeal[m.id].fiber)}</span>
+                </div>
+              )}
             </div>
           );
         })}
+        </div>
       </div>
     </div>
   );
@@ -2554,6 +2730,17 @@ function DietEditor({
 
   function dayFilled(dayId: number) {
     return MEALS.some((m) => serializeMeal(getCell(`${dayId}-${m.id}`)).trim());
+  }
+
+  // Macros nutricionales (BEDCA) por comida del día activo.
+  const macrosByMeal: Record<string, Macro> = {};
+  for (const m of MEALS) {
+    let acc = zeroMacro();
+    for (const opt of getCell(`${activeDay}-${m.id}`).options) {
+      const rec = recipes?.find((r) => r.id === opt.recipeId);
+      if (rec) acc = addMacro(acc, macrosForIngredients(rec.ingredients));
+    }
+    macrosByMeal[m.id] = acc;
   }
 
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -2689,6 +2876,7 @@ function DietEditor({
           dragOver={dragOverMeal}
           setDragOver={setDragOverMeal}
           fullscreen={fullscreen}
+          macrosByMeal={macrosByMeal}
         />
       )}
       {false && (
