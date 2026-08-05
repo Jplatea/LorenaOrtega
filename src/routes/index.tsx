@@ -1420,11 +1420,13 @@ function PatientPortal() {
   const { data: docs } = useQuery({
     queryKey: ["portal-docs"],
     queryFn: async () => {
+      // Excluimos la dieta (category 'diet'): el paciente ya la ve arriba.
       const { data } = await supabase
         .from("patient_documents")
-        .select("id, title, file_path, mime_type, created_at")
+        .select("id, title, file_path, url, mime_type, created_at")
+        .neq("category", "diet")
         .order("created_at", { ascending: false });
-      return data ?? [];
+      return (data ?? []) as { id: string; title: string; file_path: string | null; url: string | null }[];
     },
   });
   const { data: measures } = useQuery({
@@ -1440,8 +1442,13 @@ function PatientPortal() {
   const daysWithContent = DAYS.filter((d) => dayHasContent(d.id));
   const weightPoints = (measures ?? []).filter((m) => m.weight != null).map((m) => ({ date: m.date, weight: Number(m.weight) }));
 
-  async function openDoc(fp: string) {
-    const { data } = await supabase.storage.from("patient-documents").createSignedUrl(fp, 120);
+  async function openDoc(doc: { file_path: string | null; url: string | null }) {
+    if (doc.url) {
+      window.open(doc.url, "_blank", "noopener");
+      return;
+    }
+    if (!doc.file_path) return;
+    const { data } = await supabase.storage.from("patient-documents").createSignedUrl(doc.file_path, 120);
     if (data?.signedUrl) window.open(data.signedUrl, "_blank", "noopener");
   }
 
@@ -1534,11 +1541,11 @@ function PatientPortal() {
               <li key={doc.id}>
                 <button
                   type="button"
-                  onClick={() => openDoc(doc.file_path)}
+                  onClick={() => openDoc(doc)}
                   className="flex w-full items-center gap-3 rounded-xl bg-secondary/30 px-4 py-3 text-left transition hover:bg-secondary/60"
                 >
                   <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-card text-muted-foreground shadow-[var(--shadow-soft)]">
-                    <FileText className="h-4 w-4" />
+                    {doc.url ? <LinkIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{doc.title}</span>
                   <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -3812,7 +3819,8 @@ function DietEditor({
     }
     toast.success("Dieta guardada ✓");
     qc.invalidateQueries({ queryKey: ["diet", patientId, week] });
-    // Genera/actualiza el PDF en el expediente del paciente.
+    // Genera/actualiza el PDF de la dieta para el expediente del admin
+    // (el paciente NO lo ve en sus documentos: ya tiene la dieta arriba).
     await syncDietPdf();
     setSaving(false);
   }
@@ -4877,7 +4885,6 @@ function ClientDiets({ patientId }: { patientId: string }) {
 
 function ClientDocuments({ patientId }: { patientId: string }) {
   const qc = useQueryClient();
-  const attachFn = useServerFn(attachResourceToPatient);
   const [picking, setPicking] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   const [resSearch, setResSearch] = useState("");
@@ -4886,19 +4893,19 @@ function ClientDocuments({ patientId }: { patientId: string }) {
     queryFn: async () => {
       const { data } = await supabase
         .from("patient_documents")
-        .select("id, title, file_path, mime_type, created_at")
+        .select("id, title, file_path, url, mime_type, created_at")
         .eq("patient_id", patientId)
         .order("created_at", { ascending: false });
-      return data ?? [];
+      return (data ?? []) as { id: string; title: string; file_path: string | null; url: string | null }[];
     },
   });
-  // Recursos (archivos) ya subidos en la tarjeta "Recursos".
+  // Recursos (archivos o enlaces) ya guardados en la tarjeta "Recursos".
   const { data: resources } = useQuery({
     queryKey: ["recursos-list"],
     queryFn: async () => {
       const { data } = await supabase
         .from("resources")
-        .select("id, kind, title, file_path, mime_type, category")
+        .select("id, kind, title, url, file_path, mime_type, category")
         .order("created_at", { ascending: false });
       return (data ?? []) as ResourceItem[];
     },
@@ -4906,14 +4913,48 @@ function ClientDocuments({ patientId }: { patientId: string }) {
   const refresh = () => qc.invalidateQueries({ queryKey: ["client-docs", patientId] });
 
   const rq = resSearch.trim().toLowerCase();
-  const fileResources = (resources ?? []).filter(
-    (r) => r.kind === "file" && r.file_path && (!rq || r.title.toLowerCase().includes(rq)),
+  const pickable = (resources ?? []).filter(
+    (r) => (r.kind === "url" ? !!r.url : !!r.file_path) && (!rq || r.title.toLowerCase().includes(rq)),
   );
 
-  async function addResource(resourceId: string) {
-    setAdding(resourceId);
+  // Adjunta un recurso al expediente desde el navegador (sesión del admin).
+  async function addResource(r: ResourceItem) {
+    setAdding(r.id);
     try {
-      await attachFn({ data: { patient_id: patientId, resource_id: resourceId } });
+      const { data: u } = await supabase.auth.getUser();
+      if (r.kind === "url") {
+        const { error } = await supabase.from("patient_documents").insert({
+          patient_id: patientId,
+          uploaded_by: u.user?.id ?? patientId,
+          title: r.title,
+          url: r.url,
+          mime_type: null,
+          category: "other",
+        } as never);
+        if (error) throw error;
+      } else {
+        const dl = await supabase.storage.from("resources").download(r.file_path!);
+        if (dl.error || !dl.data) throw new Error(dl.error?.message ?? "No se pudo leer el recurso");
+        const safe = (r.title || "documento").replace(/[^\w.\-]/g, "_");
+        const path = `${patientId}/${crypto.randomUUID()}-${safe}`;
+        const up = await supabase.storage
+          .from("patient-documents")
+          .upload(path, dl.data, { contentType: r.mime_type ?? undefined });
+        if (up.error) throw up.error;
+        const { error } = await supabase.from("patient_documents").insert({
+          patient_id: patientId,
+          uploaded_by: u.user?.id ?? patientId,
+          title: r.title,
+          file_path: path,
+          mime_type: r.mime_type,
+          size_bytes: dl.data.size,
+          category: "other",
+        } as never);
+        if (error) {
+          await supabase.storage.from("patient-documents").remove([path]);
+          throw error;
+        }
+      }
       toast.success("Documento añadido al expediente ✓");
       qc.invalidateQueries({ queryKey: ["client-docs", patientId] });
       qc.invalidateQueries({ queryKey: ["portal-docs"] });
@@ -4925,19 +4966,24 @@ function ClientDocuments({ patientId }: { patientId: string }) {
     }
   }
 
-  async function remove(doc: { id: string; file_path: string }) {
+  async function remove(doc: { id: string; file_path: string | null }) {
     const { error } = await supabase.from("patient_documents").delete().eq("id", doc.id);
     if (error) {
       toast.error("No se pudo eliminar", { description: error.message });
       return;
     }
-    await supabase.storage.from("patient-documents").remove([doc.file_path]);
+    if (doc.file_path) await supabase.storage.from("patient-documents").remove([doc.file_path]);
     toast.success("Documento eliminado");
     refresh();
   }
 
-  async function openDoc(fp: string) {
-    const { data } = await supabase.storage.from("patient-documents").createSignedUrl(fp, 120);
+  async function openDoc(doc: { file_path: string | null; url: string | null }) {
+    if (doc.url) {
+      window.open(doc.url, "_blank", "noopener");
+      return;
+    }
+    if (!doc.file_path) return;
+    const { data } = await supabase.storage.from("patient-documents").createSignedUrl(doc.file_path, 120);
     if (data?.signedUrl) window.open(data.signedUrl, "_blank", "noopener");
   }
 
@@ -4947,7 +4993,7 @@ function ClientDocuments({ patientId }: { patientId: string }) {
         <div>
           <p className="text-sm font-semibold text-foreground">Documentos del paciente</p>
           <p className="text-xs text-muted-foreground">
-            Añade recursos ya subidos en «Recursos». El PDF de la dieta se genera solo al guardar.
+            Añade recursos (archivos o enlaces) de «Recursos». El PDF de la dieta se genera solo al guardar.
           </p>
         </div>
         <Button size="sm" variant="outline" onClick={() => setPicking((v) => !v)} className="shrink-0">
@@ -4963,13 +5009,17 @@ function ClientDocuments({ patientId }: { patientId: string }) {
             placeholder="Buscar recurso…"
             className="mb-2 h-9 bg-card shadow-[var(--shadow-soft)]"
           />
-          {fileResources.length > 0 ? (
+          {pickable.length > 0 ? (
             <ul className="max-h-56 space-y-1 overflow-y-auto pr-1">
-              {fileResources.map((r) => (
+              {pickable.map((r) => (
                 <li key={r.id} className="flex items-center gap-2 rounded-lg bg-card px-3 py-2 shadow-[var(--shadow-soft)]">
-                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  {r.kind === "url" ? (
+                    <LinkIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  )}
                   <span className="min-w-0 flex-1 truncate text-sm text-foreground">{r.title}</span>
-                  <Button size="sm" variant="outline" disabled={adding === r.id} onClick={() => addResource(r.id)} className="shrink-0">
+                  <Button size="sm" variant="outline" disabled={adding === r.id} onClick={() => addResource(r)} className="shrink-0">
                     {adding === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Añadir
                   </Button>
                 </li>
@@ -4977,7 +5027,7 @@ function ClientDocuments({ patientId }: { patientId: string }) {
             </ul>
           ) : (
             <p className="text-sm text-muted-foreground">
-              No hay archivos en «Recursos». Súbelos primero en la tarjeta Recursos.
+              No hay recursos en «Recursos». Súbelos o añade enlaces primero en la tarjeta Recursos.
             </p>
           )}
         </div>
@@ -4987,10 +5037,14 @@ function ClientDocuments({ patientId }: { patientId: string }) {
         <ul className="mt-3 space-y-1.5">
           {docs.map((doc) => (
             <li key={doc.id} className="flex items-center gap-3 rounded-xl bg-secondary/30 px-3 py-2">
-              <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+              {doc.url ? (
+                <LinkIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+              ) : (
+                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+              )}
               <button
                 type="button"
-                onClick={() => openDoc(doc.file_path)}
+                onClick={() => openDoc(doc)}
                 className="min-w-0 flex-1 truncate text-left text-sm text-foreground transition hover:text-primary"
               >
                 {doc.title}
@@ -5007,7 +5061,7 @@ function ClientDocuments({ patientId }: { patientId: string }) {
           ))}
         </ul>
       ) : (
-        <p className="mt-3 text-sm text-muted-foreground">Aún no has subido documentos para este paciente.</p>
+        <p className="mt-3 text-sm text-muted-foreground">Aún no has añadido documentos para este paciente.</p>
       )}
     </div>
   );
