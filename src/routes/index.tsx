@@ -57,7 +57,7 @@ import { MEALS, DAYS } from "@/lib/domain";
 import { ensureIngredients, renderIngredients } from "@/lib/recipes";
 import { parseMeal, serializeMeal, renderMeal, type MealValue } from "@/lib/meal-options";
 import { useCurrentUser } from "@/lib/auth-hooks";
-import { buildDietPdf, type DietRow } from "@/lib/pdf-export";
+import { buildDietPdf, buildDietPdfBlob, type DietRow, type DayNutrition } from "@/lib/pdf-export";
 import BEDCA_FOODS from "@/data/bedca-foods.json";
 import {
   macrosForIngredients,
@@ -1258,10 +1258,73 @@ function PatientMeal({ content }: { content: string }) {
   );
 }
 
+/** Extrae (nombre, cantidad) de una línea de dieta guardada:
+ *  "Nombre — 50 gr", "Nombre (100 g)" o "Nombre 100 gr". */
+function parseDietLine(line: string): { name: string; amount: string } | null {
+  const t = line.trim();
+  if (!t) return null;
+  let m = t.match(/^(.+?)\s*\((\d+(?:[.,]\d+)?)\s*(g|gr|ml)?\)\s*$/i);
+  if (m) return { name: m[1].trim(), amount: `${m[2]} ${m[3] || "g"}` };
+  m = t.match(/^(.+?)\s*[—–-]\s*(.+)$/);
+  if (m) return { name: m[1].trim(), amount: m[2].trim() };
+  m = t.match(/^(.+?)\s+(\d+(?:[.,]\d+)?\s*(?:g|gr|ml))\s*$/i);
+  if (m) return { name: m[1].trim(), amount: m[2].trim() };
+  return { name: t, amount: "" };
+}
+
+/** Macros (BEDCA) a partir del texto guardado de las comidas de un día. */
+function macrosForDietText(contents: string[]): Macro {
+  const ings: { name: string; amount: string }[] = [];
+  for (const content of contents) {
+    for (const opt of parseMeal(content).options) {
+      for (const line of opt.content.split("\n")) {
+        const p = parseDietLine(line);
+        if (p) ings.push(p);
+      }
+    }
+  }
+  return macrosForIngredients(ings);
+}
+
+/** Análisis nutricional compacto de un día para el portal (donut + barras),
+ *  igual que en el PDF. */
+function PatientDayNutrition({ macro }: { macro: Macro }) {
+  const maxG = Math.max(1, macro.fat, macro.carb, macro.prot, macro.fiber);
+  const bars: [string, number, string][] = [
+    ["Grasa", macro.fat, MACRO.fat],
+    ["Hidratos", macro.carb, MACRO.carb],
+    ["Proteína", macro.prot, MACRO.prot],
+    ["Fibra", macro.fiber, MACRO.fiber],
+  ];
+  return (
+    <div className="rounded-xl bg-card p-3 shadow-[var(--shadow-soft)]">
+      <div className="flex items-center gap-2">
+        <MacroDonut macro={macro} size={40} />
+        <div>
+          <span className="text-sm font-semibold text-foreground">{Math.round(macro.kcal)}</span>{" "}
+          <span className="text-[10px] text-muted-foreground">kcal</span>
+        </div>
+      </div>
+      <div className="mt-2 space-y-1">
+        {bars.map(([label, val, color]) => (
+          <div key={label}>
+            <div className="flex items-center justify-between text-[10px] leading-tight">
+              <span className="text-muted-foreground">{label}</span>
+              <span className="font-medium text-foreground">{round1(val)} g</span>
+            </div>
+            <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-secondary/60">
+              <div className="h-full rounded-full" style={{ width: `${Math.min(100, (val / maxG) * 100)}%`, background: color }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function PatientPortal() {
   const { data: me } = useCurrentUser();
   const [week, setWeek] = useState(1);
-  const [activeDay, setActiveDay] = useState<number>(DAYS[0].id);
 
   const { data: diet, isLoading } = useQuery({
     queryKey: ["portal-diet", week],
@@ -1296,29 +1359,19 @@ function PatientPortal() {
   const daysWithContent = DAYS.filter((d) => dayHasContent(d.id));
   const weightPoints = (measures ?? []).filter((m) => m.weight != null).map((m) => ({ date: m.date, weight: Number(m.weight) }));
 
-  // Al cambiar de semana, selecciona el primer día con plan.
-  useEffect(() => {
-    if (daysWithContent.length && !dayHasContent(activeDay)) setActiveDay(daysWithContent[0].id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [diet]);
-
   async function openDoc(fp: string) {
     const { data } = await supabase.storage.from("patient-documents").createSignedUrl(fp, 120);
     if (data?.signedUrl) window.open(data.signedUrl, "_blank", "noopener");
   }
 
-  const dayMeals = MEALS.map((m) => ({ meal: m, content: (dietByKey.get(`${activeDay}-${m.id}`) ?? "").trim() })).filter(
-    (x) => x.content,
-  );
-
   return (
-    <div className="w-full max-w-2xl space-y-5 duration-500 animate-in fade-in zoom-in-95">
+    <div className="w-full max-w-[1600px] space-y-5 duration-500 animate-in fade-in zoom-in-95">
       <div className="text-center">
         <h2 className="text-2xl font-semibold text-foreground">Hola, {me?.profile?.first_name ?? ""}</h2>
         <p className="mt-1 text-sm text-muted-foreground">Tu plan nutricional y seguimiento</p>
       </div>
 
-      {/* Dieta por semana y día */}
+      {/* Dieta: una columna por día, a todo lo ancho */}
       <section className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-float)]">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-base font-semibold text-foreground">Tu dieta</h3>
@@ -1339,43 +1392,29 @@ function PatientPortal() {
         ) : daysWithContent.length === 0 ? (
           <p className="mt-6 text-center text-sm text-muted-foreground">Aún no tienes un plan para esta semana.</p>
         ) : (
-          <>
-            {/* Selector de día */}
-            <div className="mt-4 flex flex-wrap gap-1.5">
-              {DAYS.map((d) => {
-                const has = dayHasContent(d.id);
-                const active = activeDay === d.id;
-                return (
-                  <button
-                    key={d.id}
-                    type="button"
-                    disabled={!has}
-                    onClick={() => setActiveDay(d.id)}
-                    className={cn(
-                      "rounded-full px-3 py-1.5 text-xs font-medium transition",
-                      active
-                        ? "bg-primary text-primary-foreground shadow-[var(--shadow-soft)]"
-                        : has
-                          ? "bg-secondary/60 text-foreground hover:bg-secondary"
-                          : "cursor-not-allowed bg-secondary/30 text-muted-foreground/40",
-                    )}
-                  >
-                    {d.label}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Comidas del día */}
-            <div className="mt-4 space-y-3">
-              {dayMeals.map(({ meal, content }) => (
-                <div key={meal.id} className="rounded-2xl bg-secondary/30 p-4">
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-primary">{meal.label}</p>
-                  <PatientMeal content={content} />
+          <div className="mt-4 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))]">
+            {daysWithContent.map((d) => {
+              const meals = MEALS.map((m) => ({
+                meal: m,
+                content: (dietByKey.get(`${d.id}-${m.id}`) ?? "").trim(),
+              })).filter((x) => x.content);
+              const macro = macrosForDietText(meals.map((x) => x.content));
+              return (
+                <div key={d.id} className="flex flex-col gap-3 rounded-2xl bg-secondary/20 p-3">
+                  <p className="text-center text-sm font-semibold text-primary">{d.label}</p>
+                  {hasNutrients && macro.kcal > 0 && <PatientDayNutrition macro={macro} />}
+                  {meals.map(({ meal, content }) => (
+                    <div key={meal.id} className="rounded-xl bg-card p-3 shadow-[var(--shadow-soft)]">
+                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {meal.label}
+                      </p>
+                      <PatientMeal content={content} />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </>
+              );
+            })}
+          </div>
         )}
       </section>
 
@@ -3450,9 +3489,11 @@ function DietEditor({
         return;
       }
     }
-    setSaving(false);
     toast.success("Dieta guardada ✓");
     qc.invalidateQueries({ queryKey: ["diet", patientId, week] });
+    // Genera/actualiza el PDF en el expediente del paciente.
+    await syncDietPdf();
+    setSaving(false);
   }
 
   function dayFilled(dayId: number) {
@@ -3477,48 +3518,102 @@ function DietEditor({
     macrosByMeal[m.id] = acc;
   }
 
+  // Construye las filas + nutrición para el PDF. Devuelve null si la dieta está vacía.
+  function buildPdfPayload(): { rows: DietRow[]; dayNutrition?: DayNutrition[] } | null {
+    const pdfRows: DietRow[] = [];
+    for (const d of DAYS) {
+      for (const m of MEALS) {
+        const cell = getCell(`${d.id}-${m.id}`);
+        // Enriquecer cada alimento con el nombre de la receta como 1ª línea.
+        const enriched = {
+          options: cell.options.map((o) => {
+            const rec = recipes?.find((r) => r.id === o.recipeId);
+            const content = rec ? rec.title + (o.content?.trim() ? `\n${o.content.trim()}` : "") : o.content;
+            return { recipeId: "", content };
+          }),
+          joiners: cell.joiners,
+        };
+        const content = serializeMeal(enriched);
+        if (content.trim()) pdfRows.push({ day_of_week: d.id, meal: m.id, content });
+      }
+    }
+    if (pdfRows.length === 0) return null;
+    const dayNutrition = hasNutrients
+      ? DAYS.map((d) => {
+          let acc = zeroMacro();
+          for (const m of MEALS) {
+            for (const opt of getCell(`${d.id}-${m.id}`).options) {
+              const rec = recipes?.find((r) => r.id === opt.recipeId);
+              if (rec) acc = addMacro(acc, macrosForIngredients(rec.ingredients));
+              else if (opt.content.trim()) acc = addMacro(acc, macroForFoodEntry(opt.content));
+            }
+          }
+          return { day: d.id, kcal: acc.kcal, prot: acc.prot, fat: acc.fat, carb: acc.carb, fiber: acc.fiber };
+        })
+      : undefined;
+    return { rows: pdfRows, dayNutrition };
+  }
+
+  // Genera el PDF de la dieta y lo guarda en el expediente del paciente (una
+  // única copia por semana; se sobreescribe en cada guardado). No es bloqueante.
+  async function syncDietPdf() {
+    const path = `${patientId}/dieta-semana-${week}.pdf`;
+    try {
+      const payload = buildPdfPayload();
+      if (!payload) {
+        // Dieta vacía: retira el PDF de esa semana si existía.
+        await supabase.storage.from("patient-documents").remove([path]);
+        await supabase.from("patient_documents").delete().eq("patient_id", patientId).eq("file_path", path);
+        return;
+      }
+      const { blob } = await buildDietPdfBlob({ patientName, weekNumber: week, rows: payload.rows, dayNutrition: payload.dayNutrition });
+      const { error: upErr } = await supabase.storage
+        .from("patient-documents")
+        .upload(path, blob, { contentType: "application/pdf", upsert: true });
+      if (upErr) throw upErr;
+      const title = `Dieta — Semana ${week}`;
+      const { data: u } = await supabase.auth.getUser();
+      const { data: existing } = await supabase
+        .from("patient_documents")
+        .select("id")
+        .eq("patient_id", patientId)
+        .eq("file_path", path)
+        .maybeSingle();
+      if (existing?.id) {
+        await supabase
+          .from("patient_documents")
+          .update({ title, mime_type: "application/pdf", size_bytes: blob.size } as never)
+          .eq("id", existing.id);
+      } else {
+        await supabase.from("patient_documents").insert({
+          patient_id: patientId,
+          uploaded_by: u.user?.id ?? patientId,
+          title,
+          file_path: path,
+          mime_type: "application/pdf",
+          size_bytes: blob.size,
+          category: "diet",
+        } as never);
+      }
+      qc.invalidateQueries({ queryKey: ["client-docs", patientId] });
+    } catch (err) {
+      // El guardado de la dieta no debe fallar por el PDF; solo avisamos.
+      toast.warning("Dieta guardada, pero no se pudo actualizar el PDF del expediente", {
+        description: err instanceof Error ? err.message : undefined,
+      });
+    }
+  }
+
   const [pdfLoading, setPdfLoading] = useState(false);
   async function downloadPdf() {
     setPdfLoading(true);
     try {
-      const pdfRows: DietRow[] = [];
-      for (const d of DAYS) {
-        for (const m of MEALS) {
-          const cell = getCell(`${d.id}-${m.id}`);
-          // Enriquecer cada alimento con el nombre de la receta como 1ª línea.
-          const enriched = {
-            options: cell.options.map((o) => {
-              const rec = recipes?.find((r) => r.id === o.recipeId);
-              const content = rec
-                ? rec.title + (o.content?.trim() ? `\n${o.content.trim()}` : "")
-                : o.content;
-              return { recipeId: "", content };
-            }),
-            joiners: cell.joiners,
-          };
-          const content = serializeMeal(enriched);
-          if (content.trim()) pdfRows.push({ day_of_week: d.id, meal: m.id, content });
-        }
-      }
-      if (pdfRows.length === 0) {
+      const payload = buildPdfPayload();
+      if (!payload) {
         toast.error("La dieta está vacía", { description: "Añade alguna comida antes de descargar." });
         return;
       }
-      // Totales nutricionales por día (BEDCA) para el resumen del pie del PDF.
-      const dayNutrition = hasNutrients
-        ? DAYS.map((d) => {
-            let acc = zeroMacro();
-            for (const m of MEALS) {
-              for (const opt of getCell(`${d.id}-${m.id}`).options) {
-                const rec = recipes?.find((r) => r.id === opt.recipeId);
-                if (rec) acc = addMacro(acc, macrosForIngredients(rec.ingredients));
-                else if (opt.content.trim()) acc = addMacro(acc, macroForFoodEntry(opt.content));
-              }
-            }
-            return { day: d.id, kcal: acc.kcal, prot: acc.prot, fat: acc.fat, carb: acc.carb, fiber: acc.fiber };
-          })
-        : undefined;
-      await buildDietPdf({ patientName, weekNumber: week, rows: pdfRows, dayNutrition });
+      await buildDietPdf({ patientName, weekNumber: week, rows: payload.rows, dayNutrition: payload.dayNutrition });
     } catch {
       toast.error("No se pudo generar el PDF");
     } finally {
