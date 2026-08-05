@@ -1336,6 +1336,37 @@ function PatientPortal() {
   const [profileTab, setProfileTab] = useState<"datos" | "seguridad">("datos");
   const [profile, setProfile] = useState({ first_name: "", last_name: "", email: "", phone: "", address: "" });
   const [profileSaving, setProfileSaving] = useState(false);
+
+  // Registro de peso (el paciente añade sus mediciones).
+  const [wDate, setWDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [wVal, setWVal] = useState("");
+  const [wSaving, setWSaving] = useState(false);
+  async function registerWeight() {
+    const w = parseFloat(wVal.replace(",", "."));
+    if (!isFinite(w) || w <= 0) {
+      toast.error("Introduce un peso válido");
+      return;
+    }
+    if (!me?.id) return;
+    setWSaving(true);
+    const { error } = await supabase.from("measurements").insert({ patient_id: me.id, date: wDate, weight: w } as never);
+    setWSaving(false);
+    if (error) {
+      toast.error("No se pudo registrar", { description: error.message });
+      return;
+    }
+    toast.success("Peso registrado ✓");
+    setWVal("");
+    qc.invalidateQueries({ queryKey: ["portal-measures"] });
+  }
+  async function deleteMeasure(id: string) {
+    const { error } = await supabase.from("measurements").delete().eq("id", id);
+    if (error) {
+      toast.error("No se pudo eliminar", { description: error.message });
+      return;
+    }
+    qc.invalidateQueries({ queryKey: ["portal-measures"] });
+  }
   useEffect(() => {
     const p = me?.profile as
       | { first_name?: string; last_name?: string; email?: string; phone?: string | null; address?: string | null }
@@ -1432,8 +1463,11 @@ function PatientPortal() {
   const { data: measures } = useQuery({
     queryKey: ["portal-measures"],
     queryFn: async () => {
-      const { data } = await supabase.from("measurements").select("date, weight").order("date", { ascending: true });
-      return data ?? [];
+      const { data } = await supabase
+        .from("measurements")
+        .select("id, date, weight")
+        .order("date", { ascending: true });
+      return (data ?? []) as { id: string; date: string; weight: number | null }[];
     },
   });
 
@@ -1558,13 +1592,81 @@ function PatientPortal() {
         )}
       </section>
 
-      {/* Progreso */}
-      {weightPoints.length >= 2 && (
-        <section className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-float)]">
-          <h3 className="text-base font-semibold text-foreground">Tu progreso (peso)</h3>
-          <WeightChart points={weightPoints} />
-        </section>
-      )}
+      {/* Peso: registrar + historial + gráfica */}
+      <section className="rounded-3xl border border-border bg-card p-4 shadow-[var(--shadow-float)]">
+        <h3 className="text-base font-semibold text-foreground">Peso</h3>
+
+        {/* Nueva medición (compacta) */}
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl bg-secondary/30 p-2.5">
+          <Input
+            type="date"
+            value={wDate}
+            onChange={(e) => setWDate(e.target.value)}
+            className="h-9 w-[150px] bg-card shadow-[var(--shadow-soft)]"
+          />
+          <Input
+            value={wVal}
+            onChange={(e) => setWVal(e.target.value)}
+            inputMode="decimal"
+            placeholder="Peso (kg)"
+            className="h-9 min-w-[100px] flex-1 bg-card shadow-[var(--shadow-soft)]"
+          />
+          <Button size="sm" onClick={registerWeight} disabled={wSaving} className="shrink-0">
+            {wSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Registrar
+          </Button>
+        </div>
+
+        {/* Historial con variación */}
+        {measures && measures.length > 0 && (
+          <ul className="mt-3 divide-y divide-border">
+            {[...measures].reverse().map((m, i, arr) => {
+              const prev = arr[i + 1]; // la anterior (más antigua)
+              const delta =
+                prev && m.weight != null && prev.weight != null ? round1(Number(m.weight) - Number(prev.weight)) : null;
+              return (
+                <li key={m.id} className="flex items-center gap-3 py-2">
+                  <span className="w-28 shrink-0 text-xs text-muted-foreground">
+                    {new Date(m.date).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })}
+                  </span>
+                  <span className="flex-1 text-sm font-medium text-foreground">{m.weight} kg</span>
+                  {delta != null && (
+                    <span
+                      className={cn(
+                        "rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                        delta < 0
+                          ? "bg-primary/15 text-primary"
+                          : delta > 0
+                            ? "bg-destructive/10 text-destructive"
+                            : "bg-secondary text-muted-foreground",
+                      )}
+                    >
+                      {delta < 0 ? `↓ ${Math.abs(delta)} kg` : delta > 0 ? `↑ ${delta} kg` : "="}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => deleteMeasure(m.id)}
+                    aria-label="Eliminar"
+                    className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-destructive transition hover:opacity-80"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {/* Gráfica de evolución */}
+        {weightPoints.length >= 2 ? (
+          <div className="mt-3">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">Progreso</p>
+            <WeightAreaChart points={weightPoints} />
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-muted-foreground">Registra al menos 2 pesos para ver tu evolución.</p>
+        )}
+      </section>
 
       {/* Panel "Mi perfil" (modal), con pestañas Mis datos / Seguridad */}
       {profileOpen && (
@@ -4633,19 +4735,37 @@ function ClientField({
   className?: string;
   defaultValue?: string;
 }) {
+  // La etiqueta va DENTRO del campo (placeholder), más compacto. Los inputs de
+  // tipo fecha no muestran placeholder, así que llevan una etiqueta pequeña.
+  if (type === "date") {
+    return (
+      <div className={cn("space-y-1", className)}>
+        <Label htmlFor={`cli-${name}`} className="text-[11px] text-muted-foreground">
+          {label}
+        </Label>
+        <Input
+          id={`cli-${name}`}
+          name={name}
+          type={type}
+          required={required}
+          defaultValue={defaultValue}
+          className="h-9 bg-card shadow-[var(--shadow-elevated)]"
+        />
+      </div>
+    );
+  }
   return (
-    <div className={cn("space-y-2", className)}>
-      <Label htmlFor={`cli-${name}`}>{label}</Label>
-      <Input
-        id={`cli-${name}`}
-        name={name}
-        type={type}
-        required={required}
-        step={step}
-        defaultValue={defaultValue}
-        className="bg-card shadow-[var(--shadow-elevated)]"
-      />
-    </div>
+    <Input
+      id={`cli-${name}`}
+      name={name}
+      type={type}
+      required={required}
+      step={step}
+      defaultValue={defaultValue}
+      placeholder={required ? `${label} *` : label}
+      aria-label={label}
+      className={cn("h-9 bg-card shadow-[var(--shadow-elevated)]", className)}
+    />
   );
 }
 
@@ -4816,6 +4936,57 @@ function WeightChart({ points }: { points: { date: string; weight: number }[] })
       {points.map((p, i) => (
         <circle key={i} cx={x(i)} cy={y(p.weight)} r={0.9} fill="#5E92C9" />
       ))}
+    </svg>
+  );
+}
+
+/** Gráfica de área de evolución del peso, con ejes y relleno degradado. */
+function WeightAreaChart({ points }: { points: { date: string; weight: number }[] }) {
+  if (points.length < 2) return null;
+  const W = 480, H = 190, padL = 34, padR = 14, padT = 14, padB = 26;
+  const ws = points.map((p) => p.weight);
+  let min = Math.min(...ws), max = Math.max(...ws);
+  if (min === max) {
+    min -= 1;
+    max += 1;
+  }
+  const span = max - min;
+  min -= span * 0.2;
+  max += span * 0.2;
+  const x = (i: number) => padL + (i / (points.length - 1)) * (W - padL - padR);
+  const y = (v: number) => padT + (1 - (v - min) / (max - min)) * (H - padT - padB);
+  const line = points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)} ${y(p.weight).toFixed(1)}`).join(" ");
+  const area = `${line} L${x(points.length - 1).toFixed(1)} ${(H - padB).toFixed(1)} L${x(0).toFixed(1)} ${(H - padB).toFixed(1)} Z`;
+  const yTicks = [max - span * 0.2, (min + max) / 2, min + span * 0.2];
+  const fmtD = (s: string) => new Date(s).toLocaleDateString("es-ES", { day: "2-digit", month: "short" });
+  const C = "#5FB98E";
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full text-foreground">
+      <defs>
+        <linearGradient id="wgrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={C} stopOpacity="0.28" />
+          <stop offset="100%" stopColor={C} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {yTicks.map((v, i) => (
+        <g key={i}>
+          <line x1={padL} y1={y(v)} x2={W - padR} y2={y(v)} stroke="currentColor" strokeOpacity="0.12" strokeDasharray="3 3" />
+          <text x={padL - 6} y={y(v) + 3} fontSize="10" textAnchor="end" fill="currentColor" fillOpacity="0.5">
+            {Math.round(v)}
+          </text>
+        </g>
+      ))}
+      <path d={area} fill="url(#wgrad)" />
+      <path d={line} fill="none" stroke={C} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+      {points.map((p, i) => (
+        <circle key={i} cx={x(i)} cy={y(p.weight)} r="3" fill={C} />
+      ))}
+      <text x={padL} y={H - 8} fontSize="10" fill="currentColor" fillOpacity="0.5">
+        {fmtD(points[0].date)}
+      </text>
+      <text x={W - padR} y={H - 8} fontSize="10" textAnchor="end" fill="currentColor" fillOpacity="0.5">
+        {fmtD(points[points.length - 1].date)}
+      </text>
     </svg>
   );
 }
