@@ -1392,7 +1392,7 @@ function PatientPortal() {
         ) : daysWithContent.length === 0 ? (
           <p className="mt-6 text-center text-sm text-muted-foreground">Aún no tienes un plan para esta semana.</p>
         ) : (
-          <div className="mt-4 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(190px,1fr))]">
+          <div className="mt-4 space-y-3">
             {daysWithContent.map((d) => {
               const meals = MEALS.map((m) => ({
                 meal: m,
@@ -1400,17 +1400,28 @@ function PatientPortal() {
               })).filter((x) => x.content);
               const macro = macrosForDietText(meals.map((x) => x.content));
               return (
-                <div key={d.id} className="flex flex-col gap-3 rounded-2xl bg-secondary/20 p-3">
-                  <p className="text-center text-sm font-semibold text-primary">{d.label}</p>
-                  {hasNutrients && macro.kcal > 0 && <PatientDayNutrition macro={macro} />}
-                  {meals.map(({ meal, content }) => (
-                    <div key={meal.id} className="rounded-xl bg-card p-3 shadow-[var(--shadow-soft)]">
-                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        {meal.label}
-                      </p>
-                      <PatientMeal content={content} />
+                <div key={d.id} className="rounded-2xl bg-secondary/20 p-3">
+                  <div className="flex flex-col gap-3 lg:flex-row">
+                    {/* Día + análisis nutricional (a la izquierda) */}
+                    <div className="lg:w-[230px] lg:shrink-0">
+                      <p className="mb-2 text-sm font-semibold text-primary lg:text-center">{d.label}</p>
+                      {hasNutrients && macro.kcal > 0 && <PatientDayNutrition macro={macro} />}
                     </div>
-                  ))}
+                    {/* Comidas del día en horizontal */}
+                    <div className="flex flex-1 gap-3 overflow-x-auto pb-1">
+                      {meals.map(({ meal, content }) => (
+                        <div
+                          key={meal.id}
+                          className="w-[210px] shrink-0 rounded-xl bg-card p-3 shadow-[var(--shadow-soft)]"
+                        >
+                          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            {meal.label}
+                          </p>
+                          <PatientMeal content={content} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               );
             })}
@@ -3570,22 +3581,24 @@ function DietEditor({
       const { error: upErr } = await supabase.storage
         .from("patient-documents")
         .upload(path, blob, { contentType: "application/pdf", upsert: true });
-      if (upErr) throw upErr;
+      if (upErr) throw new Error(`Subida: ${upErr.message}`);
       const title = `Dieta — Semana ${week}`;
       const { data: u } = await supabase.auth.getUser();
-      const { data: existing } = await supabase
+      const { data: existing, error: selErr } = await supabase
         .from("patient_documents")
         .select("id")
         .eq("patient_id", patientId)
         .eq("file_path", path)
         .maybeSingle();
+      if (selErr) throw new Error(`Consulta: ${selErr.message}`);
       if (existing?.id) {
-        await supabase
+        const { error: updErr } = await supabase
           .from("patient_documents")
           .update({ title, mime_type: "application/pdf", size_bytes: blob.size } as never)
           .eq("id", existing.id);
+        if (updErr) throw new Error(`Registro: ${updErr.message}`);
       } else {
-        await supabase.from("patient_documents").insert({
+        const { error: insErr } = await supabase.from("patient_documents").insert({
           patient_id: patientId,
           uploaded_by: u.user?.id ?? patientId,
           title,
@@ -3594,11 +3607,14 @@ function DietEditor({
           size_bytes: blob.size,
           category: "diet",
         } as never);
+        if (insErr) throw new Error(`Registro: ${insErr.message}`);
       }
       qc.invalidateQueries({ queryKey: ["client-docs", patientId] });
+      qc.invalidateQueries({ queryKey: ["portal-docs"] });
+      toast.success("Copia PDF de la dieta guardada en el expediente ✓");
     } catch (err) {
-      // El guardado de la dieta no debe fallar por el PDF; solo avisamos.
-      toast.warning("Dieta guardada, pero no se pudo actualizar el PDF del expediente", {
+      // El guardado de la dieta no debe fallar por el PDF; solo avisamos con el motivo.
+      toast.warning("Dieta guardada, pero no se pudo añadir el PDF al expediente", {
         description: err instanceof Error ? err.message : undefined,
       });
     }
