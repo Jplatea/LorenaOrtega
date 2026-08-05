@@ -1211,9 +1211,57 @@ function AuthedArea({
   );
 }
 
+/** Renderiza una comida para el paciente: agrupa los alimentos en menús
+ *  (separados por alternativas "o") y los muestra como lista limpia, sin los
+ *  separadores internos "— Y —" / "— O —". */
+function PatientMeal({ content }: { content: string }) {
+  const { options, joiners } = parseMeal(content);
+  const menus: string[][] = [];
+  let cur: string[] = [];
+  options.forEach((opt, i) => {
+    if (i > 0 && joiners[i - 1] === "o") {
+      if (cur.length) menus.push(cur);
+      cur = [];
+    }
+    opt.content
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .forEach((l) => cur.push(l));
+  });
+  if (cur.length) menus.push(cur);
+  const multi = menus.length > 1;
+
+  return (
+    <div className="space-y-2">
+      {menus.map((foods, mi) => (
+        <div key={mi}>
+          {multi && (
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-primary">Opción {mi + 1}</p>
+          )}
+          <ul className="space-y-1">
+            {foods.map((f, fi) => (
+              <li key={fi} className="flex gap-2 text-sm text-foreground">
+                <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-primary/50" />
+                <span>{f}</span>
+              </li>
+            ))}
+          </ul>
+          {multi && mi < menus.length - 1 && (
+            <div className="my-2.5 flex items-center gap-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              <span className="h-px flex-1 bg-border" />o bien<span className="h-px flex-1 bg-border" />
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function PatientPortal() {
   const { data: me } = useCurrentUser();
   const [week, setWeek] = useState(1);
+  const [activeDay, setActiveDay] = useState<number>(DAYS[0].id);
 
   const { data: diet, isLoading } = useQuery({
     queryKey: ["portal-diet", week],
@@ -1230,7 +1278,7 @@ function PatientPortal() {
     queryFn: async () => {
       const { data } = await supabase
         .from("patient_documents")
-        .select("id, title, file_path")
+        .select("id, title, file_path, mime_type, created_at")
         .order("created_at", { ascending: false });
       return data ?? [];
     },
@@ -1244,87 +1292,125 @@ function PatientPortal() {
   });
 
   const dietByKey = new Map((diet ?? []).map((d) => [`${d.day_of_week}-${d.meal}`, d.content ?? ""]));
-  const daysWithContent = DAYS.filter((d) => MEALS.some((m) => (dietByKey.get(`${d.id}-${m.id}`) ?? "").trim()));
+  const dayHasContent = (dayId: number) => MEALS.some((m) => (dietByKey.get(`${dayId}-${m.id}`) ?? "").trim());
+  const daysWithContent = DAYS.filter((d) => dayHasContent(d.id));
   const weightPoints = (measures ?? []).filter((m) => m.weight != null).map((m) => ({ date: m.date, weight: Number(m.weight) }));
+
+  // Al cambiar de semana, selecciona el primer día con plan.
+  useEffect(() => {
+    if (daysWithContent.length && !dayHasContent(activeDay)) setActiveDay(daysWithContent[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diet]);
 
   async function openDoc(fp: string) {
     const { data } = await supabase.storage.from("patient-documents").createSignedUrl(fp, 120);
     if (data?.signedUrl) window.open(data.signedUrl, "_blank", "noopener");
   }
 
+  const dayMeals = MEALS.map((m) => ({ meal: m, content: (dietByKey.get(`${activeDay}-${m.id}`) ?? "").trim() })).filter(
+    (x) => x.content,
+  );
+
   return (
-    <div className="w-full max-w-3xl space-y-6 duration-500 animate-in fade-in zoom-in-95">
+    <div className="w-full max-w-2xl space-y-5 duration-500 animate-in fade-in zoom-in-95">
       <div className="text-center">
         <h2 className="text-2xl font-semibold text-foreground">Hola, {me?.profile?.first_name ?? ""}</h2>
         <p className="mt-1 text-sm text-muted-foreground">Tu plan nutricional y seguimiento</p>
       </div>
 
-      <div className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-float)]">
+      {/* Dieta por semana y día */}
+      <section className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-float)]">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-base font-semibold text-foreground">Tu dieta</h3>
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">Semana</span>
+            <span className="text-xs text-muted-foreground">Semana</span>
             <Input
               type="number"
               min={1}
               value={week}
               onChange={(e) => setWeek(Math.max(1, Number(e.target.value) || 1))}
-              className="w-16 bg-card shadow-[var(--shadow-soft)]"
+              className="h-9 w-14 bg-card shadow-[var(--shadow-soft)]"
             />
           </div>
         </div>
+
         {isLoading ? (
           <p className="mt-4 text-sm text-muted-foreground">Cargando…</p>
         ) : daysWithContent.length === 0 ? (
-          <p className="mt-4 text-sm text-muted-foreground">Aún no tienes un plan para esta semana.</p>
+          <p className="mt-6 text-center text-sm text-muted-foreground">Aún no tienes un plan para esta semana.</p>
         ) : (
-          <div className="mt-4 space-y-4">
-            {daysWithContent.map((d) => (
-              <div key={d.id}>
-                <p className="mb-1.5 text-sm font-semibold text-primary">{d.label}</p>
-                <div className="space-y-2">
-                  {MEALS.map((m) => {
-                    const content = (dietByKey.get(`${d.id}-${m.id}`) ?? "").trim();
-                    if (!content) return null;
-                    return (
-                      <div key={m.id} className="rounded-xl bg-secondary/40 p-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{m.label}</p>
-                        <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{renderMeal(content)}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+          <>
+            {/* Selector de día */}
+            <div className="mt-4 flex flex-wrap gap-1.5">
+              {DAYS.map((d) => {
+                const has = dayHasContent(d.id);
+                const active = activeDay === d.id;
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    disabled={!has}
+                    onClick={() => setActiveDay(d.id)}
+                    className={cn(
+                      "rounded-full px-3 py-1.5 text-xs font-medium transition",
+                      active
+                        ? "bg-primary text-primary-foreground shadow-[var(--shadow-soft)]"
+                        : has
+                          ? "bg-secondary/60 text-foreground hover:bg-secondary"
+                          : "cursor-not-allowed bg-secondary/30 text-muted-foreground/40",
+                    )}
+                  >
+                    {d.label}
+                  </button>
+                );
+              })}
+            </div>
 
-      {docs && docs.length > 0 && (
-        <div className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-float)]">
-          <h3 className="text-base font-semibold text-foreground">Tus documentos</h3>
-          <ul className="mt-3 divide-y divide-border">
+            {/* Comidas del día */}
+            <div className="mt-4 space-y-3">
+              {dayMeals.map(({ meal, content }) => (
+                <div key={meal.id} className="rounded-2xl bg-secondary/30 p-4">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-primary">{meal.label}</p>
+                  <PatientMeal content={content} />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+
+      {/* Documentos */}
+      <section className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-float)]">
+        <h3 className="text-base font-semibold text-foreground">Tus documentos</h3>
+        {docs && docs.length > 0 ? (
+          <ul className="mt-3 space-y-2">
             {docs.map((doc) => (
-              <li key={doc.id} className="flex items-center gap-3 py-2">
-                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <li key={doc.id}>
                 <button
                   type="button"
                   onClick={() => openDoc(doc.file_path)}
-                  className="min-w-0 flex-1 truncate text-left text-sm text-foreground transition hover:text-primary"
+                  className="flex w-full items-center gap-3 rounded-xl bg-secondary/30 px-4 py-3 text-left transition hover:bg-secondary/60"
                 >
-                  {doc.title}
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-card text-muted-foreground shadow-[var(--shadow-soft)]">
+                    <FileText className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{doc.title}</span>
+                  <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
                 </button>
               </li>
             ))}
           </ul>
-        </div>
-      )}
+        ) : (
+          <p className="mt-3 text-sm text-muted-foreground">Aún no hay documentos compartidos.</p>
+        )}
+      </section>
 
+      {/* Progreso */}
       {weightPoints.length >= 2 && (
-        <div className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-float)]">
+        <section className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-float)]">
           <h3 className="text-base font-semibold text-foreground">Tu progreso (peso)</h3>
           <WeightChart points={weightPoints} />
-        </div>
+        </section>
       )}
     </div>
   );
@@ -4275,6 +4361,122 @@ function WeightChart({ points }: { points: { date: string; weight: number }[] })
   );
 }
 
+function ClientDocuments({ patientId }: { patientId: string }) {
+  const qc = useQueryClient();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const { data: docs, isLoading } = useQuery({
+    queryKey: ["client-docs", patientId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("patient_documents")
+        .select("id, title, file_path, mime_type, created_at")
+        .eq("patient_id", patientId)
+        .order("created_at", { ascending: false });
+      return data ?? [];
+    },
+  });
+  const refresh = () => qc.invalidateQueries({ queryKey: ["client-docs", patientId] });
+
+  async function upload(file: File) {
+    setUploading(true);
+    const { data: u } = await supabase.auth.getUser();
+    const safe = file.name.replace(/[^\w.\-]/g, "_");
+    const path = `${patientId}/${crypto.randomUUID()}-${safe}`;
+    const { error: upErr } = await supabase.storage
+      .from("patient-documents")
+      .upload(path, file, { contentType: file.type || undefined });
+    if (upErr) {
+      setUploading(false);
+      toast.error("No se pudo subir", { description: upErr.message });
+      return;
+    }
+    const { error } = await supabase.from("patient_documents").insert({
+      patient_id: patientId,
+      uploaded_by: u.user?.id ?? patientId,
+      title: file.name,
+      file_path: path,
+      mime_type: file.type || null,
+      size_bytes: file.size,
+      category: "other",
+    } as never);
+    setUploading(false);
+    if (error) {
+      await supabase.storage.from("patient-documents").remove([path]);
+      toast.error("No se pudo guardar", { description: error.message });
+      return;
+    }
+    toast.success("Documento subido ✓");
+    refresh();
+  }
+
+  async function remove(doc: { id: string; file_path: string }) {
+    const { error } = await supabase.from("patient_documents").delete().eq("id", doc.id);
+    if (error) {
+      toast.error("No se pudo eliminar", { description: error.message });
+      return;
+    }
+    await supabase.storage.from("patient-documents").remove([doc.file_path]);
+    toast.success("Documento eliminado");
+    refresh();
+  }
+
+  async function openDoc(fp: string) {
+    const { data } = await supabase.storage.from("patient-documents").createSignedUrl(fp, 120);
+    if (data?.signedUrl) window.open(data.signedUrl, "_blank", "noopener");
+  }
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-elevated)]">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-foreground">Documentos del paciente</p>
+          <p className="text-xs text-muted-foreground">Los verá en su portal para descargarlos.</p>
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) upload(f);
+            e.target.value = "";
+          }}
+        />
+        <Button size="sm" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()} className="shrink-0">
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Subir
+        </Button>
+      </div>
+      {isLoading ? null : docs && docs.length > 0 ? (
+        <ul className="mt-3 space-y-1.5">
+          {docs.map((doc) => (
+            <li key={doc.id} className="flex items-center gap-3 rounded-xl bg-secondary/30 px-3 py-2">
+              <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <button
+                type="button"
+                onClick={() => openDoc(doc.file_path)}
+                className="min-w-0 flex-1 truncate text-left text-sm text-foreground transition hover:text-primary"
+              >
+                {doc.title}
+              </button>
+              <button
+                type="button"
+                onClick={() => remove(doc)}
+                aria-label="Eliminar"
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-destructive transition hover:opacity-80"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">Aún no has subido documentos para este paciente.</p>
+      )}
+    </div>
+  );
+}
+
 function ProgressSection({ clientId }: { clientId: string }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -4620,6 +4822,8 @@ function ClientDetail({
               </Button>
             </div>
           </form>
+
+          <ClientDocuments patientId={id} />
 
           <ProgressSection clientId={id} />
         </>
