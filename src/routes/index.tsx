@@ -54,7 +54,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { createPatient } from "@/lib/patients.functions";
 import { MEALS, DAYS } from "@/lib/domain";
 import { ensureIngredients, renderIngredients } from "@/lib/recipes";
-import { parseMeal, serializeMeal, type MealValue } from "@/lib/meal-options";
+import { parseMeal, serializeMeal, renderMeal, type MealValue } from "@/lib/meal-options";
+import { useCurrentUser } from "@/lib/auth-hooks";
 import { buildDietPdf, type DietRow } from "@/lib/pdf-export";
 import BEDCA_FOODS from "@/data/bedca-foods.json";
 import {
@@ -218,7 +219,7 @@ function LandingPage() {
           className="fixed inset-x-0 bottom-0 top-16 z-40 flex items-start justify-center overflow-y-auto bg-background/95 px-4 py-12 backdrop-blur-xl duration-500 animate-in fade-in"
         >
           {authed ? (
-            <DashboardCards />
+            <AuthedArea />
           ) : (
             <LoginCard onClose={() => setShowLogin(false)} onSuccess={() => setAuthed(true)} />
           )}
@@ -1094,6 +1095,138 @@ const COLUMN_LABELS: Record<string, string> = {
   created_at: "Fecha",
 };
 
+function AuthedArea() {
+  const { data: me, isLoading } = useCurrentUser();
+  if (isLoading) {
+    return (
+      <div className="grid place-items-center py-24">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  if (me?.role === "patient") return <PatientPortal />;
+  return <DashboardCards />;
+}
+
+function PatientPortal() {
+  const { data: me } = useCurrentUser();
+  const [week, setWeek] = useState(1);
+
+  const { data: diet, isLoading } = useQuery({
+    queryKey: ["portal-diet", week],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("diets")
+        .select("day_of_week, meal, content")
+        .eq("week_number", week);
+      return data ?? [];
+    },
+  });
+  const { data: docs } = useQuery({
+    queryKey: ["portal-docs"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("patient_documents")
+        .select("id, title, file_path")
+        .order("created_at", { ascending: false });
+      return data ?? [];
+    },
+  });
+  const { data: measures } = useQuery({
+    queryKey: ["portal-measures"],
+    queryFn: async () => {
+      const { data } = await supabase.from("measurements").select("date, weight").order("date", { ascending: true });
+      return data ?? [];
+    },
+  });
+
+  const dietByKey = new Map((diet ?? []).map((d) => [`${d.day_of_week}-${d.meal}`, d.content ?? ""]));
+  const daysWithContent = DAYS.filter((d) => MEALS.some((m) => (dietByKey.get(`${d.id}-${m.id}`) ?? "").trim()));
+  const weightPoints = (measures ?? []).filter((m) => m.weight != null).map((m) => ({ date: m.date, weight: Number(m.weight) }));
+
+  async function openDoc(fp: string) {
+    const { data } = await supabase.storage.from("patient-documents").createSignedUrl(fp, 120);
+    if (data?.signedUrl) window.open(data.signedUrl, "_blank", "noopener");
+  }
+
+  return (
+    <div className="w-full max-w-3xl space-y-6 duration-500 animate-in fade-in zoom-in-95">
+      <div className="text-center">
+        <h2 className="text-2xl font-semibold text-foreground">Hola, {me?.profile?.first_name ?? ""}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Tu plan nutricional y seguimiento</p>
+      </div>
+
+      <div className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-float)]">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-base font-semibold text-foreground">Tu dieta</h3>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Semana</span>
+            <Input
+              type="number"
+              min={1}
+              value={week}
+              onChange={(e) => setWeek(Math.max(1, Number(e.target.value) || 1))}
+              className="w-16 bg-card shadow-[var(--shadow-soft)]"
+            />
+          </div>
+        </div>
+        {isLoading ? (
+          <p className="mt-4 text-sm text-muted-foreground">Cargando…</p>
+        ) : daysWithContent.length === 0 ? (
+          <p className="mt-4 text-sm text-muted-foreground">Aún no tienes un plan para esta semana.</p>
+        ) : (
+          <div className="mt-4 space-y-4">
+            {daysWithContent.map((d) => (
+              <div key={d.id}>
+                <p className="mb-1.5 text-sm font-semibold text-primary">{d.label}</p>
+                <div className="space-y-2">
+                  {MEALS.map((m) => {
+                    const content = (dietByKey.get(`${d.id}-${m.id}`) ?? "").trim();
+                    if (!content) return null;
+                    return (
+                      <div key={m.id} className="rounded-xl bg-secondary/40 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{m.label}</p>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-foreground">{renderMeal(content)}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {docs && docs.length > 0 && (
+        <div className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-float)]">
+          <h3 className="text-base font-semibold text-foreground">Tus documentos</h3>
+          <ul className="mt-3 divide-y divide-border">
+            {docs.map((doc) => (
+              <li key={doc.id} className="flex items-center gap-3 py-2">
+                <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <button
+                  type="button"
+                  onClick={() => openDoc(doc.file_path)}
+                  className="min-w-0 flex-1 truncate text-left text-sm text-foreground transition hover:text-primary"
+                >
+                  {doc.title}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {weightPoints.length >= 2 && (
+        <div className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-float)]">
+          <h3 className="text-base font-semibold text-foreground">Tu progreso (peso)</h3>
+          <WeightChart points={weightPoints} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DashboardCards() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -1146,9 +1279,7 @@ function DashboardCards() {
               key={c.label}
               className={cn(
                 "relative overflow-hidden border border-black/5 shadow-[var(--shadow-float)] transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
-                isOpen && fullscreen
-                  ? "fixed inset-0 z-[55] rounded-none border-0"
-                  : cn("rounded-3xl", isOpen ? "md:flex-[7]" : isCollapsed ? "md:flex-[0.5]" : "md:flex-1"),
+                isOpen ? "fixed inset-0 z-[55] rounded-none border-0" : "rounded-3xl md:flex-1",
               )}
               style={{ background: c.bg }}
             >
@@ -1158,12 +1289,20 @@ function DashboardCards() {
                   onClose={closeCard}
                   fullscreen={fullscreen}
                   onToggleFullscreen={() => setFullscreen((v) => !v)}
+                  onSwitch={(label) => {
+                    setExpanded(label);
+                    setFullscreen(true);
+                  }}
+                  pendingLeads={pendingLeads ?? 0}
                 />
               ) : (
                 <div className="relative h-full">
                   <button
                     type="button"
-                    onClick={() => setExpanded(c.label)}
+                    onClick={() => {
+                      setExpanded(c.label);
+                      setFullscreen(true);
+                    }}
                     className="group flex h-full min-h-[220px] w-full flex-col items-start p-7 text-left"
                   >
                     <span className="relative grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-card text-foreground shadow-[var(--shadow-elevated)]">
@@ -1295,12 +1434,15 @@ function ExpandedCard({
   card,
   onClose,
   fullscreen,
-  onToggleFullscreen,
+  onSwitch,
+  pendingLeads,
 }: {
   card: DashCard;
   onClose: () => void;
   fullscreen: boolean;
   onToggleFullscreen: () => void;
+  onSwitch: (label: string) => void;
+  pendingLeads: number;
 }) {
   return (
     <div
@@ -1309,37 +1451,43 @@ function ExpandedCard({
         fullscreen ? "max-h-none p-2 sm:p-3" : "max-h-[76vh] p-7 sm:p-9",
       )}
     >
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span
-            className={cn(
-              "grid place-items-center rounded-2xl bg-card text-foreground shadow-[var(--shadow-elevated)]",
-              fullscreen ? "h-8 w-8" : "h-11 w-11",
-            )}
-          >
-            <card.icon className={fullscreen ? "h-4 w-4" : "h-5 w-5"} />
-          </span>
-          <h3 className={cn("font-semibold text-foreground", fullscreen ? "text-base" : "text-xl")}>{card.label}</h3>
+      <div className="flex items-center justify-between gap-3">
+        {/* Menú de secciones (la actual resaltada) */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {DASH_CARDS.map((c) => {
+            const active = c.label === card.label;
+            return (
+              <button
+                key={c.label}
+                type="button"
+                onClick={() => onSwitch(c.label)}
+                title={c.label}
+                className={cn(
+                  "relative flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium transition",
+                  active
+                    ? "bg-card text-foreground shadow-[var(--shadow-elevated)] ring-2 ring-primary"
+                    : "bg-card/60 text-muted-foreground hover:bg-card hover:text-foreground",
+                )}
+              >
+                <c.icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden md:inline">{c.label}</span>
+                {c.label === "Solicitudes" && pendingLeads > 0 && (
+                  <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[#E84A5F] px-1 text-[9px] font-bold text-white">
+                    {pendingLeads}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onToggleFullscreen}
-            aria-label={fullscreen ? "Ventana normal" : "Expandir a pantalla completa"}
-            title={fullscreen ? "Ventana normal" : "Expandir a pantalla completa"}
-            className="grid h-9 w-9 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground"
-          >
-            {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Cerrar"
-            className="grid h-9 w-9 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Cerrar"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </button>
       </div>
 
       <div
@@ -3067,10 +3215,8 @@ function DietEditor({
 
       <div
         className={cn(
-          "gap-2",
-          fullscreen
-            ? "fixed left-1/2 top-4 z-[56] flex max-w-[70vw] -translate-x-1/2 flex-nowrap overflow-x-auto rounded-full bg-card/90 p-1.5 shadow-[var(--shadow-float)] backdrop-blur"
-            : "flex flex-wrap",
+          "flex gap-2",
+          fullscreen ? "flex-nowrap justify-center overflow-x-auto pb-1" : "flex-wrap",
         )}
       >
         {DAYS.map((d) => {
