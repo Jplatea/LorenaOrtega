@@ -65,7 +65,17 @@ import {
   addMacro,
   zeroMacro,
   hasNutrients,
+  microsForIngredients,
+  microsForFoodEntry,
+  addMicros,
+  zeroMicros,
+  hasMicros,
+  MICRO_KEYS,
+  MICRO_LABELS,
+  MICRO_UNITS,
+  MICRO_DDR,
   type Macro,
+  type Micros,
 } from "@/lib/nutrition";
 import { RecipeCombobox } from "@/components/recipe-combobox";
 
@@ -1470,12 +1480,15 @@ function MacroDonut({ macro, size = 92 }: { macro: Macro; size?: number }) {
 function DayAnalysis({
   macro,
   target,
+  micros,
   heading = "Análisis del día",
 }: {
   macro: Macro;
   target?: NutritionTarget | null;
+  micros?: Micros;
   heading?: string;
 }) {
+  const [showMicros, setShowMicros] = useState(false);
   const bars = [
     { label: "Grasa", val: macro.fat, tgt: target?.target_fat ?? null, color: MACRO.fat },
     { label: "Hidratos de carbono", val: macro.carb, tgt: target?.target_carb ?? null, color: MACRO.carb },
@@ -1519,6 +1532,41 @@ function DayAnalysis({
           })}
         </div>
       </div>
+
+      {micros && hasMicros && (
+        <div className="mt-3 border-t border-border/60 pt-3">
+          <button
+            type="button"
+            onClick={() => setShowMicros((v) => !v)}
+            className="flex w-full items-center justify-between text-xs font-medium text-muted-foreground"
+          >
+            <span>Micronutrientes (vs. VRN diario)</span>
+            <ChevronDown className={cn("h-4 w-4 transition-transform", showMicros && "rotate-180")} />
+          </button>
+          {showMicros && (
+            <div className="mt-2 grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
+              {MICRO_KEYS.map((k) => {
+                const val = micros[k];
+                const ddr = MICRO_DDR[k];
+                const pct = Math.min(100, (val / ddr) * 100);
+                return (
+                  <div key={k}>
+                    <div className="flex items-center justify-between gap-2 text-[11px]">
+                      <span className="truncate text-muted-foreground">{MICRO_LABELS[k]}</span>
+                      <span className="shrink-0 text-foreground">
+                        {round1(val)} / {ddr} {MICRO_UNITS[k]}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-secondary/60">
+                      <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -2365,6 +2413,7 @@ function VisualDietBoard({
   fullscreen,
   macrosByMeal,
   target,
+  dayMicros,
 }: {
   activeDay: number;
   recipes: BoardRecipe[];
@@ -2377,6 +2426,7 @@ function VisualDietBoard({
   fullscreen: boolean;
   macrosByMeal: Record<string, Macro>;
   target: NutritionTarget | null;
+  dayMicros: Micros;
 }) {
   const dayMacro = MEALS.reduce((a, m) => addMacro(a, macrosByMeal[m.id] ?? zeroMacro()), zeroMacro());
   const [activeMeal, setActiveMeal] = useState<string | null>(null);
@@ -2548,7 +2598,7 @@ function VisualDietBoard({
       <div className={cn("space-y-3", fullscreen && "flex min-h-0 flex-1 flex-col")}>
         {hasNutrients && dayMacro.kcal > 0 && (
           <div className="shrink-0">
-            <DayAnalysis macro={dayMacro} target={target} />
+            <DayAnalysis macro={dayMacro} target={target} micros={dayMicros} />
           </div>
         )}
         <div
@@ -2913,14 +2963,20 @@ function DietEditor({
     return MEALS.some((m) => serializeMeal(getCell(`${dayId}-${m.id}`)).trim());
   }
 
-  // Macros nutricionales (BEDCA) por comida del día activo.
+  // Macros + micros nutricionales (BEDCA) del día activo.
   const macrosByMeal: Record<string, Macro> = {};
+  let dayMicros: Micros = zeroMicros();
   for (const m of MEALS) {
     let acc = zeroMacro();
     for (const opt of getCell(`${activeDay}-${m.id}`).options) {
       const rec = recipes?.find((r) => r.id === opt.recipeId);
-      if (rec) acc = addMacro(acc, macrosForIngredients(rec.ingredients));
-      else if (opt.content.trim()) acc = addMacro(acc, macroForFoodEntry(opt.content));
+      if (rec) {
+        acc = addMacro(acc, macrosForIngredients(rec.ingredients));
+        dayMicros = addMicros(dayMicros, microsForIngredients(rec.ingredients));
+      } else if (opt.content.trim()) {
+        acc = addMacro(acc, macroForFoodEntry(opt.content));
+        dayMicros = addMicros(dayMicros, microsForFoodEntry(opt.content));
+      }
     }
     macrosByMeal[m.id] = acc;
   }
@@ -3060,6 +3116,7 @@ function DietEditor({
           fullscreen={fullscreen}
           macrosByMeal={macrosByMeal}
           target={target ?? null}
+          dayMicros={dayMicros}
         />
       )}
       {false && (
