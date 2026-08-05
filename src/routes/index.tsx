@@ -4628,6 +4628,50 @@ function WeightChart({ points }: { points: { date: string; weight: number }[] })
   );
 }
 
+function ClientDiets({ patientId }: { patientId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["client-diets", patientId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("diets")
+        .select("week_number, day_of_week, content")
+        .eq("patient_id", patientId);
+      return data ?? [];
+    },
+  });
+
+  const byWeek = new Map<number, Set<number>>();
+  for (const r of data ?? []) {
+    if (!(r.content ?? "").trim()) continue;
+    if (!byWeek.has(r.week_number)) byWeek.set(r.week_number, new Set());
+    byWeek.get(r.week_number)!.add(r.day_of_week);
+  }
+  const weeks = [...byWeek.entries()].map(([week, days]) => ({ week, days: days.size })).sort((a, b) => a.week - b.week);
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-elevated)]">
+      <p className="text-sm font-semibold text-foreground">Dietas del cliente</p>
+      {isLoading ? null : weeks.length > 0 ? (
+        <ul className="mt-3 space-y-1.5">
+          {weeks.map((w) => (
+            <li key={w.week} className="flex items-center gap-3 rounded-xl bg-secondary/30 px-3 py-2">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-soft text-foreground">
+                <NotebookPen className="h-4 w-4" />
+              </span>
+              <span className="flex-1 text-sm font-medium text-foreground">Semana {w.week}</span>
+              <span className="text-xs text-muted-foreground">
+                {w.days} {w.days === 1 ? "día" : "días"} con plan
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm text-muted-foreground">Este cliente aún no tiene ninguna dieta guardada.</p>
+      )}
+    </div>
+  );
+}
+
 function ClientDocuments({ patientId }: { patientId: string }) {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -5089,6 +5133,8 @@ function ClientDetail({
               </Button>
             </div>
           </form>
+
+          <ClientDiets patientId={id} />
 
           <ClientDocuments patientId={id} />
 
