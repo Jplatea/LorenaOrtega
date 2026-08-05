@@ -1323,12 +1323,62 @@ function PatientDayNutrition({ macro }: { macro: Macro }) {
 }
 
 function PatientPortal() {
+  const qc = useQueryClient();
   const { data: me } = useCurrentUser();
   const [week, setWeek] = useState(1);
   const [pwOpen, setPwOpen] = useState(false);
   const [newPw, setNewPw] = useState("");
   const [newPw2, setNewPw2] = useState("");
   const [pwSaving, setPwSaving] = useState(false);
+
+  // Mi perfil (editable por el propio paciente)
+  const [profile, setProfile] = useState({ first_name: "", last_name: "", email: "", phone: "", address: "" });
+  const [profileSaving, setProfileSaving] = useState(false);
+  useEffect(() => {
+    const p = me?.profile as
+      | { first_name?: string; last_name?: string; email?: string; phone?: string | null; address?: string | null }
+      | null
+      | undefined;
+    setProfile({
+      first_name: p?.first_name ?? "",
+      last_name: p?.last_name ?? "",
+      email: me?.email ?? p?.email ?? "",
+      phone: p?.phone ?? "",
+      address: p?.address ?? "",
+    });
+  }, [me]);
+
+  async function saveProfile() {
+    if (!me?.id) return;
+    setProfileSaving(true);
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        first_name: profile.first_name.trim(),
+        last_name: profile.last_name.trim(),
+        phone: profile.phone.trim() || null,
+        address: profile.address.trim() || null,
+      } as never)
+      .eq("id", me.id);
+    // Cambio de correo (requiere confirmación por email de Supabase).
+    const newEmail = profile.email.trim();
+    if (!error && newEmail && newEmail !== (me.email ?? "")) {
+      const { error: e2 } = await supabase.auth.updateUser({ email: newEmail });
+      if (e2) {
+        setProfileSaving(false);
+        toast.error("No se pudo cambiar el correo", { description: e2.message });
+        return;
+      }
+      toast.info("Te enviamos un correo para confirmar el nuevo email.");
+    }
+    setProfileSaving(false);
+    if (error) {
+      toast.error("No se pudo guardar el perfil", { description: error.message });
+      return;
+    }
+    toast.success("Perfil actualizado ✓");
+    qc.invalidateQueries({ queryKey: ["current-user"] });
+  }
 
   async function changePassword() {
     if (newPw.length < 8) {
@@ -1492,43 +1542,98 @@ function PatientPortal() {
         </section>
       )}
 
-      {/* Seguridad: cambiar contraseña */}
+      {/* Mi perfil: datos editables por el paciente + contraseña */}
       <section className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-float)]">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h3 className="text-base font-semibold text-foreground">Seguridad</h3>
-            <p className="text-xs text-muted-foreground">Cambia tu contraseña de acceso.</p>
+        <h3 className="text-base font-semibold text-foreground">Mi perfil</h3>
+        <p className="text-xs text-muted-foreground">Mantén tus datos de contacto al día.</p>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Nombre</Label>
+            <Input
+              value={profile.first_name}
+              onChange={(e) => setProfile((f) => ({ ...f, first_name: e.target.value }))}
+              className="bg-card shadow-[var(--shadow-soft)]"
+            />
           </div>
-          <Button size="sm" variant="outline" onClick={() => setPwOpen((v) => !v)} className="shrink-0">
-            <Lock className="h-4 w-4" /> Cambiar contraseña
+          <div className="space-y-1.5">
+            <Label className="text-xs">Apellidos</Label>
+            <Input
+              value={profile.last_name}
+              onChange={(e) => setProfile((f) => ({ ...f, last_name: e.target.value }))}
+              className="bg-card shadow-[var(--shadow-soft)]"
+            />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label className="text-xs">Correo</Label>
+            <Input
+              type="email"
+              value={profile.email}
+              onChange={(e) => setProfile((f) => ({ ...f, email: e.target.value }))}
+              className="bg-card shadow-[var(--shadow-soft)]"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Teléfono</Label>
+            <Input
+              value={profile.phone}
+              onChange={(e) => setProfile((f) => ({ ...f, phone: e.target.value }))}
+              className="bg-card shadow-[var(--shadow-soft)]"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Dirección</Label>
+            <Input
+              value={profile.address}
+              onChange={(e) => setProfile((f) => ({ ...f, address: e.target.value }))}
+              className="bg-card shadow-[var(--shadow-soft)]"
+            />
+          </div>
+        </div>
+        <div className="mt-3 flex justify-end">
+          <Button size="sm" onClick={saveProfile} disabled={profileSaving}>
+            {profileSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar cambios
           </Button>
         </div>
-        {pwOpen && (
-          <div className="mt-4 space-y-2 sm:max-w-sm">
-            <Input
-              type="password"
-              value={newPw}
-              onChange={(e) => setNewPw(e.target.value)}
-              placeholder="Nueva contraseña (mín. 8 caracteres)"
-              className="bg-card shadow-[var(--shadow-soft)]"
-            />
-            <Input
-              type="password"
-              value={newPw2}
-              onChange={(e) => setNewPw2(e.target.value)}
-              placeholder="Repite la nueva contraseña"
-              className="bg-card shadow-[var(--shadow-soft)]"
-            />
-            <div className="flex justify-end gap-2 pt-1">
-              <Button size="sm" variant="ghost" onClick={() => setPwOpen(false)} disabled={pwSaving}>
-                Cancelar
-              </Button>
-              <Button size="sm" onClick={changePassword} disabled={pwSaving}>
-                {pwSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar contraseña
-              </Button>
+
+        {/* Contraseña */}
+        <div className="mt-5 border-t border-border pt-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">Contraseña</p>
+              <p className="text-xs text-muted-foreground">Cambia tu contraseña de acceso.</p>
             </div>
+            <Button size="sm" variant="outline" onClick={() => setPwOpen((v) => !v)} className="shrink-0">
+              <Lock className="h-4 w-4" /> Cambiar contraseña
+            </Button>
           </div>
-        )}
+          {pwOpen && (
+            <div className="mt-3 space-y-2 sm:max-w-sm">
+              <Input
+                type="password"
+                value={newPw}
+                onChange={(e) => setNewPw(e.target.value)}
+                placeholder="Nueva contraseña (mín. 8 caracteres)"
+                className="bg-card shadow-[var(--shadow-soft)]"
+              />
+              <Input
+                type="password"
+                value={newPw2}
+                onChange={(e) => setNewPw2(e.target.value)}
+                placeholder="Repite la nueva contraseña"
+                className="bg-card shadow-[var(--shadow-soft)]"
+              />
+              <div className="flex justify-end gap-2 pt-1">
+                <Button size="sm" variant="ghost" onClick={() => setPwOpen(false)} disabled={pwSaving}>
+                  Cancelar
+                </Button>
+                <Button size="sm" onClick={changePassword} disabled={pwSaving}>
+                  {pwSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar contraseña
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );
