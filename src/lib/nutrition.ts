@@ -2,17 +2,69 @@ import RAW from "@/data/bedca-nutrients.json";
 
 export type Macro = { kcal: number; prot: number; fat: number; carb: number; fiber: number };
 
-const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+// Normaliza para comparar: minúsculas, sin acentos ni signos.
+const strip = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+// Reduce plural -> singular de forma sencilla (solo palabras largas).
+const sing = (t: string) => (t.length > 4 ? t.replace(/(es|s)$/, "") : t);
+const tokenize = (s: string) =>
+  strip(s)
+    .split(" ")
+    .filter((w) => w.length > 2)
+    .map(sing);
 
-// Mapa nombre-normalizado -> nutrientes por 100 g (datos BEDCA).
-const MAP: Map<string, Macro> = new Map(
-  Object.entries(RAW as Record<string, Macro>).map(([k, v]) => [norm(k), v]),
-);
+type Entry = { key: string; toks: string[]; macro: Macro };
+const ENTRIES: Entry[] = [];
+const EXACT = new Map<string, Macro>();
+for (const [name, macro] of Object.entries(RAW as Record<string, Macro>)) {
+  const key = strip(name);
+  if (key && !EXACT.has(key)) EXACT.set(key, macro);
+  ENTRIES.push({ key, toks: tokenize(name), macro });
+}
 
-export const hasNutrients = MAP.size > 0;
+export const hasNutrients = ENTRIES.length > 0;
 
+const memo = new Map<string, Macro | null>();
+
+/** Busca el alimento BEDCA que mejor encaja con el nombre del ingrediente:
+ *  1) coincidencia exacta (sin acentos); 2) mejor solape por palabras donde el
+ *  nombre de la receta o el de BEDCA es subconjunto del otro (p. ej. "aceite de
+ *  oliva virgen extra" -> "aceite de oliva", "pechuga de pollo" -> "pollo, pechuga"). */
 export function lookupFood(name: string): Macro | null {
-  return MAP.get(norm(name)) ?? null;
+  const key = strip(name);
+  if (!key) return null;
+  const ex = EXACT.get(key);
+  if (ex) return ex;
+  if (memo.has(key)) return memo.get(key) ?? null;
+
+  const qt = key.split(" ").filter((w) => w.length > 2).map(sing);
+  let best: Macro | null = null;
+  let bestScore = 0;
+  let bestDiff = Infinity;
+  if (qt.length) {
+    for (const e of ENTRIES) {
+      if (!e.toks.length) continue;
+      let shared = 0;
+      for (const t of qt) if (e.toks.includes(t)) shared++;
+      if (shared === 0) continue;
+      const subset = shared === qt.length || shared === e.toks.length;
+      if (!subset) continue;
+      const diff = Math.abs(e.toks.length - qt.length);
+      if (shared > bestScore || (shared === bestScore && diff < bestDiff)) {
+        best = e.macro;
+        bestScore = shared;
+        bestDiff = diff;
+      }
+    }
+  }
+  memo.set(key, best);
+  return best;
 }
 
 /** Convierte una cantidad ("200 gr", "150 ml", "30") a gramos. Devuelve null si
