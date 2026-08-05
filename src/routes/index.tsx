@@ -1295,8 +1295,8 @@ function ExpandedCard({
   return (
     <div
       className={cn(
-        "flex h-full min-h-[360px] flex-col p-7 duration-500 animate-in fade-in slide-in-from-bottom-2 sm:p-9",
-        fullscreen ? "max-h-none" : "max-h-[76vh]",
+        "flex h-full min-h-[360px] flex-col duration-500 animate-in fade-in slide-in-from-bottom-2",
+        fullscreen ? "max-h-none p-3 sm:p-4" : "max-h-[76vh] p-7 sm:p-9",
       )}
     >
       <div className="flex items-center justify-between gap-4">
@@ -1327,7 +1327,7 @@ function ExpandedCard({
         </div>
       </div>
 
-      <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-1">
+      <div className={cn("min-h-0 flex-1 overflow-y-auto pr-1", fullscreen ? "mt-2" : "mt-6")}>
         {card.label === "Clientes" ? (
           <ClientesPanel />
         ) : card.label === "Recetas" ? (
