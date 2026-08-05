@@ -2013,6 +2013,10 @@ type RecipeItem = {
   content: string;
   ingredients: { name: string; amount: string }[];
   image_path: string | null;
+  kcal: number | null;
+  prot: number | null;
+  fat: number | null;
+  carb: number | null;
 };
 
 /** URL de la imagen de una receta: si es una URL externa (Openverse/Wikimedia)
@@ -2223,8 +2227,12 @@ function RecipeCard({
   onRemove: () => void;
 }) {
   const img = recipeImageUrl(r.image_path);
-  const per100 = macrosPer100g(r.ingredients);
-  const known = anyKnown(r.ingredients);
+  // Si hay valores introducidos a mano, tienen prioridad sobre los calculados (BEDCA).
+  const hasManual = r.kcal != null || r.fat != null || r.carb != null || r.prot != null;
+  const per100 = hasManual
+    ? { kcal: r.kcal ?? 0, fat: r.fat ?? 0, carb: r.carb ?? 0, prot: r.prot ?? 0, fiber: 0 }
+    : macrosPer100g(r.ingredients);
+  const known = hasManual || anyKnown(r.ingredients);
   return (
     <div className="group overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-elevated)] transition hover:shadow-[var(--shadow-float)]">
       <div className={cn("relative w-full bg-secondary/40", fullscreen ? "h-16" : "h-24")}>
@@ -2293,7 +2301,7 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
     queryFn: async () => {
       const { data } = await supabase
         .from("recipes")
-        .select("id, meal, title, content, ingredients, image_path")
+        .select("id, meal, title, content, ingredients, image_path, kcal, prot, fat, carb")
         .order("title");
       return (data ?? []).map((r) => ({ ...r, ingredients: ensureIngredients(r.ingredients) })) as RecipeItem[];
     },
@@ -2422,6 +2430,12 @@ function RecipeEditor({
   const [imgUploading, setImgUploading] = useState(false);
   const imgRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
+  // Valores nutricionales por 100 g introducidos a mano (opcionales).
+  const num = (v: number | null | undefined) => (v != null ? String(v) : "");
+  const [mKcal, setMKcal] = useState(num(recipe?.kcal));
+  const [mFat, setMFat] = useState(num(recipe?.fat));
+  const [mCarb, setMCarb] = useState(num(recipe?.carb));
+  const [mProt, setMProt] = useState(num(recipe?.prot));
   const [imgSearching, setImgSearching] = useState(false);
   const [imgResults, setImgResults] = useState<{ url: string; thumbnail: string; provider: string }[] | null>(null);
 
@@ -2482,11 +2496,19 @@ function RecipeEditor({
     }
     setSaving(true);
     const { data: u } = await supabase.auth.getUser();
+    const toNum = (s: string) => {
+      const n = parseFloat(s.replace(",", "."));
+      return s.trim() && isFinite(n) ? n : null;
+    };
     const payload = {
       meal,
       title: title.trim(),
       content: "",
       image_path: imagePath,
+      kcal: toNum(mKcal),
+      fat: toNum(mFat),
+      carb: toNum(mCarb),
+      prot: toNum(mProt),
       ingredients: ingredients
         .filter((i) => i.name.trim() || i.amount.trim())
         .map((i) => ({
@@ -2546,6 +2568,39 @@ function RecipeEditor({
               ))}
             </SelectContent>
           </Select>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <Label>Valores nutricionales (por 100 g)</Label>
+          <span className="text-[11px] text-muted-foreground">
+            Opcional. Si los rellenas, se muestran en la tarjeta en vez de los calculados.
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {(
+            [
+              ["kcal", mKcal, setMKcal, MACRO.kcal],
+              ["G (grasa)", mFat, setMFat, MACRO.fat],
+              ["HC (hidratos)", mCarb, setMCarb, MACRO.carb],
+              ["P (proteína)", mProt, setMProt, MACRO.prot],
+            ] as [string, string, (v: string) => void, string][]
+          ).map(([label, val, setVal, color]) => (
+            <div key={label} className="space-y-1">
+              <Label className="text-xs font-semibold" style={{ color }}>
+                {label}
+              </Label>
+              <Input
+                value={val}
+                onChange={(e) => setVal(e.target.value)}
+                inputMode="decimal"
+                placeholder="0"
+                className="bg-card shadow-[var(--shadow-elevated)]"
+                style={{ color }}
+              />
+            </div>
+          ))}
         </div>
       </div>
 
@@ -3076,6 +3131,10 @@ type RecipeOpt = {
   content: string;
   ingredients: { name: string; amount: string }[];
   imageUrl: string | null;
+  kcal?: number | null;
+  fat?: number | null;
+  carb?: number | null;
+  prot?: number | null;
 };
 
 function AutoResizeTextarea(props: React.ComponentProps<typeof Textarea>) {
@@ -3114,6 +3173,10 @@ type BoardRecipe = {
   content: string;
   imageUrl?: string | null;
   ingredients?: { name: string; amount: string }[];
+  kcal?: number | null;
+  fat?: number | null;
+  carb?: number | null;
+  prot?: number | null;
 };
 
 function VisualDietBoard({
@@ -3310,8 +3373,11 @@ function VisualDietBoard({
             <p className="p-4 text-center text-sm text-muted-foreground">Sin recetas.</p>
           ) : (
             palette.map((r) => {
-              const per100 = macrosPer100g(r.ingredients ?? []);
-              const known = anyKnown(r.ingredients ?? []);
+              const manual = r.kcal != null || r.fat != null || r.carb != null || r.prot != null;
+              const per100 = manual
+                ? { kcal: r.kcal ?? 0, fat: r.fat ?? 0, carb: r.carb ?? 0, prot: r.prot ?? 0, fiber: 0 }
+                : macrosPer100g(r.ingredients ?? []);
+              const known = manual || anyKnown(r.ingredients ?? []);
               return (
                 <div
                   key={r.id}
@@ -3643,7 +3709,7 @@ function DietEditor({
     queryFn: async () => {
       const { data } = await supabase
         .from("recipes")
-        .select("id, meal, title, content, ingredients, image_path")
+        .select("id, meal, title, content, ingredients, image_path, kcal, prot, fat, carb")
         .order("title");
       return (data ?? []).map((r) => ({
         id: r.id,
@@ -3652,6 +3718,10 @@ function DietEditor({
         content: r.content || renderIngredients(ensureIngredients(r.ingredients)),
         ingredients: ensureIngredients(r.ingredients),
         imageUrl: recipeImageUrl(r.image_path),
+        kcal: (r as { kcal: number | null }).kcal,
+        fat: (r as { fat: number | null }).fat,
+        carb: (r as { carb: number | null }).carb,
+        prot: (r as { prot: number | null }).prot,
       })) as RecipeOpt[];
     },
   });
@@ -3809,25 +3879,59 @@ function DietEditor({
   // única copia por semana; se sobreescribe en cada guardado). No es bloqueante.
   async function syncDietPdf() {
     setPdfSyncError(null);
+    const path = `${patientId}/dieta-semana-${week}.pdf`;
     try {
       const payload = buildPdfPayload();
-      // El servidor genera el PDF y lo sube con service_role (fiable). Si la
-      // dieta está vacía, rows: [] hace que retire el PDF de esa semana.
-      await saveDietPdfFn({
-        data: {
-          patient_id: patientId,
-          week,
-          patientName,
-          rows: payload?.rows ?? [],
-          dayNutrition: payload?.dayNutrition,
-        },
+      // Dieta vacía: retira el PDF de esa semana si existía.
+      if (!payload) {
+        await supabase.storage.from("patient-documents").remove([path]);
+        await supabase.from("patient_documents").delete().eq("patient_id", patientId).eq("file_path", path);
+        qc.invalidateQueries({ queryKey: ["client-docs", patientId] });
+        return;
+      }
+      // Generamos el PDF y lo subimos desde el navegador con la sesión del admin
+      // (no depende de variables de entorno del servidor).
+      const { blob } = await buildDietPdfBlob({
+        patientName,
+        weekNumber: week,
+        rows: payload.rows,
+        dayNutrition: payload.dayNutrition,
       });
+      const { error: upErr } = await supabase.storage
+        .from("patient-documents")
+        .upload(path, blob, { contentType: "application/pdf", upsert: true });
+      if (upErr) throw new Error(`Subida: ${upErr.message}`);
+      const title = `Dieta — Semana ${week}`;
+      const { data: u } = await supabase.auth.getUser();
+      const { data: existing, error: selErr } = await supabase
+        .from("patient_documents")
+        .select("id")
+        .eq("patient_id", patientId)
+        .eq("file_path", path)
+        .maybeSingle();
+      if (selErr) throw new Error(`Consulta: ${selErr.message}`);
+      if (existing?.id) {
+        const { error } = await supabase
+          .from("patient_documents")
+          .update({ title, mime_type: "application/pdf", size_bytes: blob.size } as never)
+          .eq("id", existing.id);
+        if (error) throw new Error(`Registro: ${error.message}`);
+      } else {
+        const { error } = await supabase.from("patient_documents").insert({
+          patient_id: patientId,
+          uploaded_by: u.user?.id ?? patientId,
+          title,
+          file_path: path,
+          mime_type: "application/pdf",
+          size_bytes: blob.size,
+          category: "diet",
+        } as never);
+        if (error) throw new Error(`Registro: ${error.message}`);
+      }
       qc.invalidateQueries({ queryKey: ["client-docs", patientId] });
       qc.invalidateQueries({ queryKey: ["portal-docs"] });
-      if (payload) toast.success("Copia PDF de la dieta guardada en el expediente ✓");
+      toast.success("Copia PDF de la dieta guardada en el expediente ✓");
     } catch (err) {
-      // El guardado de la dieta no debe fallar por el PDF; mostramos el motivo
-      // de forma persistente para poder diagnosticarlo.
       const msg = err instanceof Error ? err.message : String(err);
       setPdfSyncError(msg);
       toast.warning("Dieta guardada, pero no se pudo añadir el PDF al expediente", { description: msg });
