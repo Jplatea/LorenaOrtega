@@ -190,74 +190,120 @@ async function renderPdf(opts: {
     return y + h;
   };
 
-  // Resumen nutricional por día (energía + macros), alineado con las columnas
-  // de la tabla. Devuelve la Y final.
-  const drawNutrition = (startY: number): number => {
-    const nutOf = (dayId: number) => opts.dayNutrition?.find((n) => n.day === dayId);
-    const rowH = 15;
+  // --- Resumen nutricional por día, con el mismo formato que la web
+  //     ("Análisis del día": donut de macros + barras de colores). ---
 
-    // Título de sección
-    doc.setFont(...MED);
-    doc.setFontSize(9);
-    doc.setTextColor(...SAGE_DARK);
-    doc.text("RESUMEN NUTRICIONAL POR DÍA", MARGIN, startY - 6);
+  // Segmento de anillo (annular) aproximado con triángulos, para el donut.
+  const ringSeg = (
+    cx: number,
+    cy: number,
+    rO: number,
+    rI: number,
+    a0: number,
+    a1: number,
+    color: [number, number, number],
+  ) => {
+    doc.setFillColor(...color);
+    const steps = Math.max(2, Math.ceil((a1 - a0) / 6));
+    for (let s = 0; s < steps; s++) {
+      const t0 = ((a0 + ((a1 - a0) * s) / steps) * Math.PI) / 180;
+      const t1 = ((a0 + ((a1 - a0) * (s + 1)) / steps) * Math.PI) / 180;
+      const p1x = cx + rO * Math.cos(t0), p1y = cy + rO * Math.sin(t0);
+      const p2x = cx + rO * Math.cos(t1), p2y = cy + rO * Math.sin(t1);
+      const p3x = cx + rI * Math.cos(t1), p3y = cy + rI * Math.sin(t1);
+      const p4x = cx + rI * Math.cos(t0), p4y = cy + rI * Math.sin(t0);
+      doc.triangle(p1x, p1y, p2x, p2y, p3x, p3y, "F");
+      doc.triangle(p1x, p1y, p3x, p3y, p4x, p4y, "F");
+    }
+  };
 
-    let yy = startY;
-    doc.setDrawColor(220);
-    doc.setLineWidth(0.5);
-
-    // Cabecera de días
-    doc.setFillColor(...INK);
-    doc.rect(MARGIN, yy, labelW, rowH, "FD");
-    doc.setFont(...MED);
-    doc.setFontSize(7);
-    doc.setTextColor(255, 255, 255);
-    doc.text("NUTRIENTE", MARGIN + labelW / 2, yy + rowH / 2 + 2.4, { align: "center" });
-    DAYS.forEach((d, i) => {
-      const x = MARGIN + labelW + i * dayW;
-      doc.setFillColor(...INK);
-      doc.rect(x, yy, dayW, rowH, "FD");
-      doc.setTextColor(255, 255, 255);
-      doc.text(d.label.slice(0, 3).toUpperCase(), x + dayW / 2, yy + rowH / 2 + 2.4, { align: "center" });
-    });
-    yy += rowH;
-
-    const metrics: { label: string; color: [number, number, number]; val: (n: DayNutrition) => string }[] = [
-      { label: "Energía (kcal)", color: C_KCAL, val: (n) => Math.round(n.kcal).toString() },
-      { label: "Grasas (g)", color: C_FAT, val: (n) => r1(n.fat) },
-      { label: "H. de carbono (g)", color: C_CARB, val: (n) => r1(n.carb) },
-      { label: "Proteínas (g)", color: C_PROT, val: (n) => r1(n.prot) },
-      { label: "Fibra (g)", color: C_FIBER, val: (n) => r1(n.fiber) },
+  // Donut de macros (proporción de kcal: hidratos, grasa, proteína).
+  const donut = (cx: number, cy: number, R: number, n: DayNutrition) => {
+    const rI = R * 0.6;
+    ringSeg(cx, cy, R, rI, 0, 360, [233, 231, 227]); // pista de fondo
+    const pK = 4 * n.prot, cK = 4 * n.carb, fK = 9 * n.fat;
+    const tot = pK + cK + fK;
+    if (tot <= 0) return;
+    const segs: [number, [number, number, number]][] = [
+      [cK, C_CARB],
+      [fK, C_FAT],
+      [pK, C_PROT],
     ];
+    let a = -90;
+    for (const [v, c] of segs) {
+      const sweep = (360 * v) / tot;
+      if (sweep > 0.3) ringSeg(cx, cy, R, rI, a, a + sweep, c);
+      a += sweep;
+    }
+  };
 
-    metrics.forEach((mt, ri) => {
-      // Etiqueta de la métrica (con su color de macro)
-      doc.setFillColor(...TINT);
-      doc.rect(MARGIN, yy, labelW, rowH, "FD");
+  // Mini-barras de macros (compactas, para la tira inferior de una página).
+  const barsMini = (x: number, y: number, w: number, n: DayNutrition) => {
+    const maxG = Math.max(1, n.fat, n.carb, n.prot, n.fiber);
+    const rows: [string, number, [number, number, number]][] = [
+      ["Grasa", n.fat, C_FAT],
+      ["Hidratos", n.carb, C_CARB],
+      ["Proteína", n.prot, C_PROT],
+      ["Fibra", n.fiber, C_FIBER],
+    ];
+    const rh = 13;
+    rows.forEach(([label, val, color], i) => {
+      const yy = y + i * rh;
+      doc.setFont(...REG);
+      doc.setFontSize(6.2);
+      doc.setTextColor(...MUTED);
+      doc.text(label, x, yy + 5);
       doc.setFont(...MED);
-      doc.setFontSize(6.8);
-      doc.setTextColor(...mt.color);
-      doc.text(mt.label, MARGIN + 5, yy + rowH / 2 + 2.2);
-      // Valores por día
-      DAYS.forEach((d, i) => {
-        const x = MARGIN + labelW + i * dayW;
-        doc.setFillColor(...(ri % 2 === 0 ? PAPER : TINT));
-        doc.rect(x, yy, dayW, rowH, "FD");
-        const n = nutOf(d.id);
-        doc.setFont(...REG);
-        doc.setFontSize(7.5);
-        doc.setTextColor(...INK);
-        doc.text(n ? mt.val(n) : "—", x + dayW / 2, yy + rowH / 2 + 2.6, { align: "center" });
-      });
-      yy += rowH;
+      doc.setTextColor(...INK);
+      doc.text(`${r1(val)} g`, x + w, yy + 5, { align: "right" });
+      const by = yy + 6.8, bh = 3;
+      doc.setFillColor(236, 236, 232);
+      doc.roundedRect(x, by, w, bh, 1.5, 1.5, "F");
+      const pct = Math.min(1, val / maxG);
+      if (pct > 0) {
+        doc.setFillColor(...color);
+        doc.roundedRect(x, by, Math.max(2.5, w * pct), bh, 1.5, 1.5, "F");
+      }
     });
-    return yy;
+  };
+
+  // Tarjeta compacta "Análisis" de un día (día + kcal + donut + mini-barras),
+  // pensada para 7 en una sola fila y que todo quepa en una página.
+  const dayCardMini = (x: number, y: number, w: number, h: number, label: string, n: DayNutrition) => {
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(228);
+    doc.setLineWidth(0.7);
+    doc.roundedRect(x, y, w, h, 6, 6, "FD");
+    const cx = x + w / 2;
+    // Día
+    doc.setFont(...MED);
+    doc.setFontSize(8);
+    doc.setTextColor(...INK);
+    doc.text(label, cx, y + 13, { align: "center" });
+    // kcal
+    doc.setFontSize(10);
+    doc.setTextColor(...C_KCAL);
+    doc.text(`${Math.round(n.kcal)}`, cx, y + 26, { align: "center" });
+    doc.setFont(...REG);
+    doc.setFontSize(6.2);
+    doc.setTextColor(...MUTED);
+    doc.text("kcal", cx, y + 33, { align: "center" });
+    // Donut
+    donut(cx, y + 56, 17, n);
+    // Mini-barras
+    barsMini(x + 8, y + 82, w - 16, n);
   };
 
   drawBackground();
   drawBrand();
 
   const meals = MEALS.filter((m) => DAYS.some((d) => mealGroups(rowContent(d.id, m.id)).length > 0));
+
+  // Reservamos una tira inferior para el resumen nutricional (donuts + barras)
+  // de modo que todo quepa en una sola página.
+  const nutDays = (opts.dayNutrition ?? []).filter((n) => n.kcal > 0);
+  const stripH = 140;
+  const tableBottom = nutDays.length > 0 ? bottom - stripH - 24 : bottom;
 
   let y = drawHeaderRow(tableTop);
 
@@ -271,7 +317,7 @@ async function renderPdf(opts: {
     const maxLines = Math.max(1, ...cellLines.map((l) => l.length));
     const rowH = Math.max(26, maxLines * lineH + padY * 2);
 
-    if (y + rowH > bottom) {
+    if (y + rowH > tableBottom) {
       doc.addPage();
       drawBackground();
       drawBrand();
@@ -318,18 +364,31 @@ async function renderPdf(opts: {
     y += rowH;
   });
 
-  // Resumen nutricional al final del PDF (si hay datos).
-  if (opts.dayNutrition && opts.dayNutrition.some((n) => n.kcal > 0)) {
-    const blockH = 15 * 6; // cabecera + 5 métricas
-    if (y + 26 + blockH > bottom) {
+  // Resumen nutricional: tira inferior con una mini-tarjeta "Análisis del día"
+  // (donut + barras) por cada día con plan, todo en la misma página.
+  if (nutDays.length > 0) {
+    // Si por el motivo que sea no queda hueco (dieta muy larga), pasa a página nueva.
+    let stripTop = y + 20;
+    if (stripTop + stripH > bottom) {
       doc.addPage();
       drawBackground();
       drawBrand();
-      y = tableTop;
-    } else {
-      y += 26;
+      stripTop = tableTop + 20;
     }
-    drawNutrition(y);
+
+    doc.setFont(...MED);
+    doc.setFontSize(9.5);
+    doc.setTextColor(...SAGE_DARK);
+    doc.text("RESUMEN NUTRICIONAL POR DÍA", MARGIN, stripTop - 7);
+
+    const gap = 6;
+    const cardW = (usableW - gap * 6) / 7;
+    DAYS.forEach((d, i) => {
+      const n = nutDays.find((nn) => nn.day === d.id);
+      if (!n) return;
+      const x = MARGIN + i * (cardW + gap);
+      dayCardMini(x, stripTop, cardW, stripH, d.label, n);
+    });
   }
 
   // Pie de página

@@ -2987,13 +2987,8 @@ function VisualDietBoard({
         </div>
       </div>
 
-      {/* Comidas del día + análisis nutricional */}
+      {/* Comidas del día (el análisis del día se muestra compacto en la cabecera) */}
       <div className={cn("space-y-3", fullscreen && "flex min-h-0 flex-1 flex-col")}>
-        {hasNutrients && dayMacro.kcal > 0 && (
-          <div className="shrink-0">
-            <DayAnalysis macro={dayMacro} target={target} micros={dayMicros} />
-          </div>
-        )}
         <div
           className={cn(
             "grid gap-2.5 sm:grid-cols-2",
@@ -3449,7 +3444,7 @@ function DietEditor({
     <div
       className={cn(
         "flex gap-2",
-        fullscreen ? "flex-nowrap justify-center overflow-x-auto pb-1" : "flex-wrap",
+        fullscreen ? "flex-nowrap overflow-x-auto pb-1" : "flex-wrap",
       )}
     >
       {DAYS.map((d) => {
@@ -3481,9 +3476,10 @@ function DietEditor({
     </div>
   );
 
-  const weekControls = (
-    <div className="flex shrink-0 items-center justify-end gap-2">
-      <Label htmlFor="diet-week" className="text-sm text-muted-foreground">
+  // Selector de semana (a la izquierda de los días).
+  const semanaControl = (
+    <div className="flex shrink-0 items-center gap-1.5">
+      <Label htmlFor="diet-week" className="text-xs text-muted-foreground">
         Semana
       </Label>
       <Input
@@ -3492,24 +3488,70 @@ function DietEditor({
         min={1}
         value={week}
         onChange={(e) => setWeek(Math.max(1, Number(e.target.value) || 1))}
-        className="w-16 bg-card shadow-[var(--shadow-elevated)]"
+        className="h-9 w-14 bg-card shadow-[var(--shadow-elevated)]"
       />
-      <Button
-        size="sm"
-        variant="outline"
-        onClick={downloadPdf}
-        disabled={pdfLoading}
-        title="Descargar la dieta de este cliente en PDF"
-      >
-        {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} PDF
-      </Button>
     </div>
   );
 
+  // Macros totales del día activo (para el análisis compacto de la cabecera).
+  const dayMacro = MEALS.reduce((a, m) => addMacro(a, macrosByMeal[m.id] ?? zeroMacro()), zeroMacro());
+  const dayMaxG = Math.max(1, dayMacro.fat, dayMacro.carb, dayMacro.prot, dayMacro.fiber);
+  const analysisBars: [string, number, number | null | undefined, string][] = [
+    ["Grasa", dayMacro.fat, target?.target_fat, MACRO.fat],
+    ["Hidratos", dayMacro.carb, target?.target_carb, MACRO.carb],
+    ["Proteína", dayMacro.prot, target?.target_prot, MACRO.prot],
+    ["Fibra", dayMacro.fiber, null, MACRO.fiber],
+  ];
+  // Análisis del día COMPACTO (donut + kcal + macros), a la derecha de los días.
+  const analysis =
+    hasNutrients && dayMacro.kcal > 0 ? (
+      <div className="flex shrink-0 items-center gap-3 rounded-2xl bg-card px-3 py-1.5 shadow-[var(--shadow-elevated)]">
+        <MacroDonut macro={dayMacro} size={46} />
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-1">
+            <span className="text-sm font-semibold text-foreground">{Math.round(dayMacro.kcal)}</span>
+            {target?.target_kcal ? (
+              <span className="text-[11px] text-muted-foreground">/ {target.target_kcal}</span>
+            ) : null}
+            <span className="text-[11px] text-muted-foreground">kcal</span>
+          </div>
+          <div className="mt-0.5 grid grid-cols-2 gap-x-4 gap-y-1">
+            {analysisBars.map(([label, val, tgt, color]) => {
+              const pct = tgt && tgt > 0 ? (val / tgt) * 100 : (val / dayMaxG) * 100;
+              return (
+                <div key={label} className="min-w-[104px]">
+                  <div className="flex items-center justify-between gap-2 text-[10px] leading-tight">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="font-medium text-foreground">
+                      {round1(val)}
+                      {tgt ? `/${round1(tgt)}` : ""} g
+                    </span>
+                  </div>
+                  <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-secondary/60">
+                    <div className="h-full rounded-full" style={{ width: `${Math.min(100, pct)}%`, background: color }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    ) : null;
+
   return (
     <div className={fullscreen ? "flex h-full min-h-0 flex-col space-y-2" : "space-y-4"}>
-      {/* Línea estándar: volver + Guardar + X (igual que el resto de secciones) */}
+      {/* Línea estándar: volver + PDF + Guardar + X (igual que el resto de secciones) */}
       <PanelToolbar info={patientName} onBack={onBack} onClose={onClose}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={downloadPdf}
+          disabled={pdfLoading}
+          className="shrink-0"
+          title="Descargar la dieta de este cliente en PDF"
+        >
+          {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} PDF
+        </Button>
         <Button size="sm" onClick={save} disabled={saving} className="shrink-0">
           {saving ? (
             <LoadingBar />
@@ -3527,12 +3569,11 @@ function DietEditor({
         </div>
       )}
 
-      {/* Sección de información de esta tarjeta: días de la semana (centrados)
-          con Semana + PDF a la misma altura. */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-        <div className="min-w-0" />
-        <div className="min-w-0">{days}</div>
-        {weekControls}
+      {/* Sección de información: Semana (izquierda) · días · análisis compacto (derecha) */}
+      <div className="flex flex-wrap items-center gap-3">
+        {semanaControl}
+        <div className="min-w-0 flex-1 overflow-x-auto">{days}</div>
+        {analysis}
       </div>
 
       {isLoading ? (
