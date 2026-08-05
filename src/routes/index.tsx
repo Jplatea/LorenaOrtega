@@ -39,6 +39,7 @@ import {
   Minimize2,
   ChevronUp,
   ChevronDown,
+  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -151,6 +152,22 @@ function LandingPage() {
   const [open, setOpen] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [authed, setAuthed] = useState(false);
+  // Sección abierta a pantalla completa. Se eleva aquí para poder mostrar el
+  // menú de secciones (mini-tarjetas) en la barra superior.
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  const { data: pendingLeads } = useQuery({
+    queryKey: ["leads-pending-count"],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from("leads")
+        .select("*", { count: "exact", head: true })
+        .eq("handled", false);
+      return count ?? 0;
+    },
+    enabled: authed,
+  });
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -182,6 +199,8 @@ function LandingPage() {
     await supabase.auth.signOut();
     setAuthed(false);
     setShowLogin(false);
+    setExpanded(null);
+    setFullscreen(false);
   }
 
   return (
@@ -189,15 +208,61 @@ function LandingPage() {
       {/* 1. Navbar */}
       <header className="sticky top-0 z-50 border-b border-border bg-background/85 text-foreground backdrop-blur-xl">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
-          <div className="grid h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+          <div className="grid h-16 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 sm:gap-4">
             <Link to="/" className="flex min-w-0 items-center gap-2">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/25">
                 <Leaf className="h-4 w-4 text-primary" />
               </span>
-              <span className="truncate text-sm font-semibold tracking-tight sm:text-base">
+              <span className="hidden truncate text-sm font-semibold tracking-tight sm:inline sm:text-base">
                 Lorena Ortega Dietética
               </span>
             </Link>
+
+            {/* Menú de secciones (mini-tarjetas) — solo con una sección abierta */}
+            <div className="min-w-0">
+              {authed && expanded !== null && (
+                <div className="flex items-center justify-center gap-1.5 overflow-x-auto sm:gap-2">
+                  {DASH_CARDS.map((c) => {
+                    const active = c.label === expanded;
+                    return (
+                      <button
+                        key={c.label}
+                        type="button"
+                        onClick={() => {
+                          setExpanded(c.label);
+                          setFullscreen(true);
+                        }}
+                        title={c.label}
+                        style={{ background: c.bg }}
+                        className={cn(
+                          "relative flex h-10 shrink-0 items-center gap-1.5 rounded-full border border-black/5 pl-1 pr-1 transition",
+                          active
+                            ? "shadow-[var(--shadow-elevated)] ring-2 ring-primary ring-offset-2 ring-offset-background"
+                            : "opacity-70 shadow-[var(--shadow-soft)] hover:opacity-100",
+                        )}
+                      >
+                        <span className="relative grid h-8 w-8 shrink-0 place-items-center rounded-full bg-card text-foreground shadow-[var(--shadow-soft)]">
+                          <c.icon className="h-4 w-4" />
+                          {c.label === "Solicitudes" && (pendingLeads ?? 0) > 0 && (
+                            <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-[#E84A5F] px-1 text-[9px] font-bold leading-none text-white shadow-[var(--shadow-soft)]">
+                              {pendingLeads}
+                            </span>
+                          )}
+                        </span>
+                        <span
+                          className={cn(
+                            "pr-2 text-xs font-medium text-foreground",
+                            active ? "inline" : "hidden lg:inline",
+                          )}
+                        >
+                          {c.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             <button
               type="button"
@@ -219,7 +284,13 @@ function LandingPage() {
           className="fixed inset-x-0 bottom-0 top-16 z-40 flex items-start justify-center overflow-y-auto bg-background/95 px-4 py-12 backdrop-blur-xl duration-500 animate-in fade-in"
         >
           {authed ? (
-            <AuthedArea />
+            <AuthedArea
+              expanded={expanded}
+              setExpanded={setExpanded}
+              fullscreen={fullscreen}
+              setFullscreen={setFullscreen}
+              pendingLeads={pendingLeads ?? 0}
+            />
           ) : (
             <LoginCard onClose={() => setShowLogin(false)} onSuccess={() => setAuthed(true)} />
           )}
@@ -922,8 +993,9 @@ function ContactoSection() {
   );
 }
 
-function SolicitudesPanel() {
+function SolicitudesPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: () => void }) {
   const qc = useQueryClient();
+  const [search, setSearch] = useState("");
   const { data: leads, isLoading } = useQuery({
     queryKey: ["leads-list"],
     queryFn: async () => {
@@ -956,14 +1028,24 @@ function SolicitudesPanel() {
       minute: "2-digit",
     });
 
+  const q = search.trim().toLowerCase();
+  const filtered = (leads ?? []).filter(
+    (l) => !q || `${l.name ?? ""} ${l.email ?? ""} ${l.message ?? ""} ${l.source ?? ""}`.toLowerCase().includes(q),
+  );
+
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        {isLoading ? "Cargando…" : `${leads?.length ?? 0} solicitudes`}
-      </p>
-      {isLoading ? null : leads && leads.length > 0 ? (
+    <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
+      <PanelToolbar
+        info={isLoading ? "Cargando…" : `${filtered.length} solicitud${filtered.length === 1 ? "" : "es"}`}
+        search={search}
+        setSearch={setSearch}
+        searchPlaceholder="Buscar solicitud…"
+        onClose={onClose}
+      />
+      <div className={cn(fullscreen ? "min-h-0 flex-1 overflow-y-auto pr-1" : "")}>
+      {isLoading ? null : filtered.length > 0 ? (
         <ul className="space-y-3">
-          {leads.map((l) => (
+          {filtered.map((l) => (
             <li
               key={l.id}
               className={cn(
@@ -1029,9 +1111,10 @@ function SolicitudesPanel() {
         </ul>
       ) : (
         <div className="rounded-2xl bg-card p-8 text-center text-sm text-muted-foreground shadow-[var(--shadow-elevated)]">
-          Aún no hay solicitudes. Las reservas y mensajes de la web aparecerán aquí.
+          {q ? "No hay solicitudes que coincidan." : "Aún no hay solicitudes. Las reservas y mensajes de la web aparecerán aquí."}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -1095,7 +1178,19 @@ const COLUMN_LABELS: Record<string, string> = {
   created_at: "Fecha",
 };
 
-function AuthedArea() {
+function AuthedArea({
+  expanded,
+  setExpanded,
+  fullscreen,
+  setFullscreen,
+  pendingLeads,
+}: {
+  expanded: string | null;
+  setExpanded: (v: string | null) => void;
+  fullscreen: boolean;
+  setFullscreen: (v: boolean) => void;
+  pendingLeads: number;
+}) {
   const { data: me, isLoading } = useCurrentUser();
   if (isLoading) {
     return (
@@ -1105,7 +1200,15 @@ function AuthedArea() {
     );
   }
   if (me?.role === "patient") return <PatientPortal />;
-  return <DashboardCards />;
+  return (
+    <DashboardCards
+      expanded={expanded}
+      setExpanded={setExpanded}
+      fullscreen={fullscreen}
+      setFullscreen={setFullscreen}
+      pendingLeads={pendingLeads}
+    />
+  );
 }
 
 function PatientPortal() {
@@ -1227,9 +1330,19 @@ function PatientPortal() {
   );
 }
 
-function DashboardCards() {
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [fullscreen, setFullscreen] = useState(false);
+function DashboardCards({
+  expanded,
+  setExpanded,
+  fullscreen,
+  setFullscreen,
+  pendingLeads,
+}: {
+  expanded: string | null;
+  setExpanded: (v: string | null) => void;
+  fullscreen: boolean;
+  setFullscreen: (v: boolean) => void;
+  pendingLeads: number;
+}) {
   const [peek, setPeek] = useState<string | null>(null);
   const closeCard = () => {
     setExpanded(null);
@@ -1245,16 +1358,6 @@ function DashboardCards() {
       ov.style.overflowY = "";
     };
   }, [expanded]);
-  const { data: pendingLeads } = useQuery({
-    queryKey: ["leads-pending-count"],
-    queryFn: async () => {
-      const { count } = await supabase
-        .from("leads")
-        .select("*", { count: "exact", head: true })
-        .eq("handled", false);
-      return count ?? 0;
-    },
-  });
 
   return (
     <div className="w-full max-w-6xl duration-500 animate-in fade-in zoom-in-95">
@@ -1284,17 +1387,7 @@ function DashboardCards() {
               style={{ background: c.bg }}
             >
               {isOpen ? (
-                <ExpandedCard
-                  card={c}
-                  onClose={closeCard}
-                  fullscreen={fullscreen}
-                  onToggleFullscreen={() => setFullscreen((v) => !v)}
-                  onSwitch={(label) => {
-                    setExpanded(label);
-                    setFullscreen(true);
-                  }}
-                  pendingLeads={pendingLeads ?? 0}
-                />
+                <ExpandedCard card={c} onClose={closeCard} fullscreen={fullscreen} />
               ) : (
                 <div className="relative h-full">
                   <button
@@ -1430,56 +1523,57 @@ function DataPeekModal({ label, table, onClose }: { label: string; table: PeekTa
   );
 }
 
-function ExpandedCard({
-  card,
+/** Barra estándar de cada panel, todo en una sola línea: info (recuento) +
+ *  buscador + acciones + X de cierre. Se usa en todas las secciones para
+ *  maximizar el espacio de la información real. `onBack` (opcional) añade una
+ *  flecha de volver a la izquierda para las subvistas (editor, ficha…). */
+function PanelToolbar({
+  info,
+  search,
+  setSearch,
+  searchPlaceholder = "Buscar…",
   onClose,
-  fullscreen,
-  onSwitch,
-  pendingLeads,
+  onBack,
+  children,
 }: {
-  card: DashCard;
-  onClose: () => void;
-  fullscreen: boolean;
-  onToggleFullscreen: () => void;
-  onSwitch: (label: string) => void;
-  pendingLeads: number;
+  info?: string;
+  search?: string;
+  setSearch?: (v: string) => void;
+  searchPlaceholder?: string;
+  onClose?: () => void;
+  onBack?: () => void;
+  children?: React.ReactNode;
 }) {
   return (
-    <div
-      className={cn(
-        "flex h-full min-h-[360px] flex-col duration-500 animate-in fade-in slide-in-from-bottom-2",
-        fullscreen ? "max-h-none p-2 sm:p-3" : "max-h-[76vh] p-7 sm:p-9",
+    <div className="flex shrink-0 items-center gap-2">
+      {onBack && (
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Volver"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground"
+        >
+          <ChevronRight className="h-4 w-4 rotate-180" />
+        </button>
       )}
-    >
-      <div className="flex items-center justify-between gap-3">
-        {/* Menú de secciones (la actual resaltada) */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          {DASH_CARDS.map((c) => {
-            const active = c.label === card.label;
-            return (
-              <button
-                key={c.label}
-                type="button"
-                onClick={() => onSwitch(c.label)}
-                title={c.label}
-                className={cn(
-                  "relative flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium transition",
-                  active
-                    ? "bg-card text-foreground shadow-[var(--shadow-elevated)] ring-2 ring-primary"
-                    : "bg-card/60 text-muted-foreground hover:bg-card hover:text-foreground",
-                )}
-              >
-                <c.icon className="h-3.5 w-3.5 shrink-0" />
-                <span className="hidden md:inline">{c.label}</span>
-                {c.label === "Solicitudes" && pendingLeads > 0 && (
-                  <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-[#E84A5F] px-1 text-[9px] font-bold text-white">
-                    {pendingLeads}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+      {info && (
+        <span className="hidden shrink-0 whitespace-nowrap text-xs text-muted-foreground sm:inline">{info}</span>
+      )}
+      {setSearch && (
+        <div className="relative w-full max-w-[280px] shrink">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search ?? ""}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="h-10 w-full bg-card pl-9 shadow-[var(--shadow-soft)]"
+          />
         </div>
+      )}
+      {/* Empuja las acciones a la derecha, con o sin buscador. */}
+      <div className="min-w-0 flex-1" />
+      {children}
+      {onClose && (
         <button
           type="button"
           onClick={onClose}
@@ -1488,24 +1582,54 @@ function ExpandedCard({
         >
           <X className="h-4 w-4" />
         </button>
-      </div>
+      )}
+    </div>
+  );
+}
+
+function ExpandedCard({
+  card,
+  onClose,
+  fullscreen,
+}: {
+  card: DashCard;
+  onClose: () => void;
+  fullscreen: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "relative flex h-full min-h-[360px] flex-col duration-500 animate-in fade-in slide-in-from-bottom-2",
+        fullscreen ? "max-h-none p-2 sm:px-3 sm:pb-3 sm:pt-2" : "max-h-[76vh] p-7 sm:p-9",
+      )}
+    >
+      {/* La cabecera estándar (info + buscador + acciones + X) la aporta cada
+          panel con <PanelToolbar>. En modo ventana mostramos el nombre arriba. */}
+      {!fullscreen && (
+        <div className="mb-4 flex items-center gap-2">
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-card text-foreground shadow-[var(--shadow-soft)]">
+            <card.icon className="h-4 w-4" />
+          </span>
+          <h3 className="text-base font-semibold text-foreground">{card.label}</h3>
+        </div>
+      )}
 
       <div
         className={cn(
           "min-h-0 flex-1 pr-1",
-          fullscreen ? "mt-1 flex flex-col overflow-hidden" : "mt-6 overflow-y-auto",
+          fullscreen ? "flex flex-col overflow-hidden" : "overflow-y-auto",
         )}
       >
         {card.label === "Clientes" ? (
-          <ClientesPanel />
+          <ClientesPanel fullscreen={fullscreen} onClose={onClose} />
         ) : card.label === "Recetas" ? (
-          <RecetasPanel fullscreen={fullscreen} />
+          <RecetasPanel fullscreen={fullscreen} onClose={onClose} />
         ) : card.label === "Dietas" ? (
-          <DietasPanel fullscreen={fullscreen} />
+          <DietasPanel fullscreen={fullscreen} onClose={onClose} />
         ) : card.label === "Recursos" ? (
-          <RecursosPanel />
+          <RecursosPanel fullscreen={fullscreen} onClose={onClose} />
         ) : card.label === "Solicitudes" ? (
-          <SolicitudesPanel />
+          <SolicitudesPanel fullscreen={fullscreen} onClose={onClose} />
         ) : (
           <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 text-center">
             <p className="max-w-sm text-sm text-muted-foreground">
@@ -1527,9 +1651,11 @@ type RecipeItem = {
   image_path: string | null;
 };
 
-/** URL pública de la imagen de una receta (bucket público 'recipe-images'). */
+/** URL de la imagen de una receta: si es una URL externa (Openverse/Wikimedia)
+ *  se devuelve tal cual; si no, se resuelve del bucket público 'recipe-images'. */
 function recipeImageUrl(path: string | null | undefined): string | null {
   if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
   return supabase.storage.from("recipe-images").getPublicUrl(path).data.publicUrl;
 }
 
@@ -1793,7 +1919,7 @@ function RecipeCard({
   );
 }
 
-function RecetasPanel({ fullscreen }: { fullscreen: boolean }) {
+function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<"new" | RecipeItem | null>(null);
   const [search, setSearch] = useState("");
@@ -1816,7 +1942,9 @@ function RecetasPanel({ fullscreen }: { fullscreen: boolean }) {
       <RecipeEditor
         recipe={editing === "new" ? null : editing}
         titles={[...new Set((recipes ?? []).map((r) => r.title))]}
+        fullscreen={fullscreen}
         onBack={() => setEditing(null)}
+        onClose={onClose}
         onSaved={() => {
           refresh();
           setEditing(null);
@@ -1855,48 +1983,50 @@ function RecetasPanel({ fullscreen }: { fullscreen: boolean }) {
   const q = search.trim().toLowerCase();
   const filtered = (recipes ?? []).filter((r) => !q || r.title.toLowerCase().includes(q));
 
+  const grid = (
+    <div
+      className={cn(
+        "grid gap-3",
+        fullscreen ? "grid-cols-2 lg:grid-cols-4 xl:grid-cols-5" : "sm:grid-cols-2 xl:grid-cols-3",
+      )}
+    >
+      {filtered.map((r) => (
+        <RecipeCard
+          key={r.id}
+          r={r}
+          fullscreen={fullscreen}
+          onEdit={() => setEditing(r)}
+          onDuplicate={() => duplicate(r)}
+          onRemove={() => remove(r)}
+        />
+      ))}
+    </div>
+  );
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-sm text-muted-foreground">
-          {isLoading ? "Cargando…" : `${filtered.length} recetas`}
-        </span>
-        <Button size="sm" onClick={() => setEditing("new")}>
+    <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
+      <PanelToolbar
+        info={isLoading ? "Cargando…" : `${filtered.length} recetas`}
+        search={search}
+        setSearch={setSearch}
+        searchPlaceholder="Buscar recetas…"
+        onClose={onClose}
+      >
+        <Button size="sm" onClick={() => setEditing("new")} className="shrink-0">
           <Plus className="h-4 w-4" /> Nueva receta
         </Button>
-      </div>
-
-      <Input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Buscar recetas por nombre…"
-        className="bg-card shadow-[var(--shadow-soft)]"
-      />
+      </PanelToolbar>
 
       {isLoading ? (
         <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
-      ) : filtered.length > 0 ? (
-        <div
-          className={cn(
-            "grid gap-3",
-            fullscreen ? "grid-cols-2 lg:grid-cols-4 xl:grid-cols-5" : "sm:grid-cols-2 xl:grid-cols-3",
-          )}
-        >
-          {filtered.map((r) => (
-            <RecipeCard
-              key={r.id}
-              r={r}
-              fullscreen={fullscreen}
-              onEdit={() => setEditing(r)}
-              onDuplicate={() => duplicate(r)}
-              onRemove={() => remove(r)}
-            />
-          ))}
-        </div>
-      ) : (
+      ) : filtered.length === 0 ? (
         <div className="rounded-2xl bg-card p-8 text-center text-sm text-muted-foreground shadow-[var(--shadow-elevated)]">
           {q ? "No hay recetas que coincidan." : "Aún no hay recetas. Pulsa “Nueva receta” para crear la primera."}
         </div>
+      ) : fullscreen ? (
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">{grid}</div>
+      ) : (
+        grid
       )}
     </div>
   );
@@ -1905,12 +2035,16 @@ function RecetasPanel({ fullscreen }: { fullscreen: boolean }) {
 function RecipeEditor({
   recipe,
   titles,
+  fullscreen,
   onBack,
+  onClose,
   onSaved,
 }: {
   recipe: RecipeItem | null;
   titles: string[];
+  fullscreen: boolean;
   onBack: () => void;
+  onClose: () => void;
   onSaved: () => void;
 }) {
   const [title, setTitle] = useState(recipe?.title ?? "");
@@ -1924,6 +2058,38 @@ function RecipeEditor({
   const [imgUploading, setImgUploading] = useState(false);
   const imgRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
+  const [imgSearching, setImgSearching] = useState(false);
+  const [imgResults, setImgResults] = useState<{ url: string; thumbnail: string; provider: string }[] | null>(null);
+
+  async function searchPhotos() {
+    const q = title.trim();
+    if (!q) {
+      toast.error("Escribe primero el título de la receta");
+      return;
+    }
+    setImgSearching(true);
+    setImgResults(null);
+    try {
+      const res = await fetch(
+        `https://api.openverse.org/v1/images/?q=${encodeURIComponent(q)}&page_size=12&mature=false`,
+        { headers: { Accept: "application/json" } },
+      );
+      const j = await res.json();
+      const results = (j.results ?? [])
+        .filter((r: { url?: string; thumbnail?: string }) => r.url && r.thumbnail)
+        .map((r: { url: string; thumbnail: string; provider?: string }) => ({
+          url: r.url,
+          thumbnail: r.thumbnail,
+          provider: r.provider ?? "",
+        }));
+      setImgResults(results);
+      if (results.length === 0) toast.info("Sin resultados. Prueba otro título o sube una foto.");
+    } catch {
+      toast.error("No se pudo buscar imágenes");
+    } finally {
+      setImgSearching(false);
+    }
+  }
 
   async function uploadImage(file: File) {
     setImgUploading(true);
@@ -1980,15 +2146,10 @@ function RecipeEditor({
   }
 
   return (
-    <div className="space-y-4">
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition hover:text-foreground"
-      >
-        <ChevronRight className="h-4 w-4 rotate-180" /> Volver a las recetas
-      </button>
+    <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
+      <PanelToolbar info={recipe ? "Editar receta" : "Nueva receta"} onBack={onBack} onClose={onClose} />
 
+      <div className={cn(fullscreen ? "min-h-0 flex-1 space-y-4 overflow-y-auto pr-1" : "space-y-4")}>
       <div className="grid gap-3 sm:grid-cols-[1fr_11rem]">
         <div className="space-y-2">
           <Label htmlFor="rec-title">Título</Label>
@@ -2050,6 +2211,10 @@ function RecipeEditor({
               {imgUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
               {imagePath ? "Cambiar" : "Subir imagen"}
             </Button>
+            <Button type="button" size="sm" variant="outline" disabled={imgSearching} onClick={searchPhotos}>
+              {imgSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <BookOpen className="h-4 w-4" />}
+              Buscar foto
+            </Button>
             {imagePath && (
               <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={removeImage}>
                 Quitar
@@ -2057,6 +2222,29 @@ function RecipeEditor({
             )}
           </div>
         </div>
+        {imgResults && imgResults.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-[11px] text-muted-foreground">
+              Elige una foto (imágenes de licencia libre vía Openverse):
+            </p>
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+              {imgResults.map((im) => (
+                <button
+                  key={im.url}
+                  type="button"
+                  onClick={() => {
+                    setImagePath(im.url);
+                    setImgResults(null);
+                  }}
+                  className="aspect-square overflow-hidden rounded-lg border border-border transition hover:ring-2 hover:ring-primary"
+                  title={`Fuente: ${im.provider}`}
+                >
+                  <img src={im.thumbnail} alt="" className="h-full w-full object-cover" loading="lazy" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -2132,6 +2320,7 @@ function RecipeEditor({
           )}
         </Button>
       </div>
+      </div>
     </div>
   );
 }
@@ -2149,7 +2338,7 @@ type ResourceItem = {
 
 const RESOURCE_CATEGORIES = ["Guías", "Analíticas", "Plantillas", "Educación", "Otros"] as const;
 
-function RecursosPanel() {
+function RecursosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -2268,66 +2457,58 @@ function RecursosPanel() {
   );
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm text-muted-foreground">
-          {isLoading ? "Cargando…" : `${filtered.length} recurso${filtered.length === 1 ? "" : "s"}`}
-          {activeCat !== "Todas" && ` · ${activeCat}`}
-        </span>
-        <div className="flex gap-2">
-          <input
-            ref={fileRef}
-            type="file"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) uploadFile(f);
-              e.target.value = "";
-            }}
-          />
-          <Button size="sm" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()}>
-            {uploading ? (
-              <LoadingBar />
-            ) : (
-              <>
-                <Upload className="h-4 w-4" /> Subir archivo
-              </>
-            )}
-          </Button>
-          <Button size="sm" onClick={() => setAddingUrl((v) => !v)}>
-            <LinkIcon className="h-4 w-4" /> Añadir enlace
-          </Button>
-        </div>
-      </div>
+    <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
+      <input
+        ref={fileRef}
+        type="file"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) uploadFile(f);
+          e.target.value = "";
+        }}
+      />
+      <PanelToolbar
+        info={isLoading ? "Cargando…" : `${filtered.length} recurso${filtered.length === 1 ? "" : "s"}`}
+        search={search}
+        setSearch={setSearch}
+        searchPlaceholder="Buscar recurso…"
+        onClose={onClose}
+      >
+        <Button size="sm" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()} className="shrink-0">
+          {uploading ? (
+            <LoadingBar />
+          ) : (
+            <>
+              <Upload className="h-4 w-4" /> Subir archivo
+            </>
+          )}
+        </Button>
+        <Button size="sm" onClick={() => setAddingUrl((v) => !v)} className="shrink-0">
+          <LinkIcon className="h-4 w-4" /> Añadir enlace
+        </Button>
+      </PanelToolbar>
 
-      <div className="space-y-3">
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar recurso por nombre…"
-          className="bg-card shadow-[var(--shadow-soft)]"
-        />
-        <div className="flex flex-wrap gap-2">
-          {["Todas", ...RESOURCE_CATEGORIES].map((cat) => (
-            <button
-              key={cat}
-              type="button"
-              onClick={() => setActiveCat(cat)}
-              className={cn(
-                "rounded-full px-3 py-1.5 text-xs font-medium transition",
-                activeCat === cat
-                  ? "bg-primary text-primary-foreground shadow-[var(--shadow-soft)]"
-                  : "bg-card text-foreground shadow-[var(--shadow-elevated)] hover:opacity-90",
-              )}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
-        {activeCat !== "Todas" && (
-          <p className="text-xs text-muted-foreground">Los nuevos recursos se añadirán a «{activeCat}».</p>
-        )}
+      <div className="flex flex-wrap gap-2">
+        {["Todas", ...RESOURCE_CATEGORIES].map((cat) => (
+          <button
+            key={cat}
+            type="button"
+            onClick={() => setActiveCat(cat)}
+            className={cn(
+              "rounded-full px-3 py-1.5 text-xs font-medium transition",
+              activeCat === cat
+                ? "bg-primary text-primary-foreground shadow-[var(--shadow-soft)]"
+                : "bg-card text-foreground shadow-[var(--shadow-elevated)] hover:opacity-90",
+            )}
+          >
+            {cat}
+          </button>
+        ))}
       </div>
+      {activeCat !== "Todas" && (
+        <p className="text-xs text-muted-foreground">Los nuevos recursos se añadirán a «{activeCat}».</p>
+      )}
 
       {addingUrl && (
         <div className="space-y-2 rounded-2xl bg-card p-4 shadow-[var(--shadow-elevated)]">
@@ -2354,7 +2535,12 @@ function RecursosPanel() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-elevated)]">
+      <div
+        className={cn(
+          "overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-elevated)]",
+          fullscreen && "min-h-0 flex-1 overflow-y-auto",
+        )}
+      >
         {isLoading ? (
           <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
         ) : filtered.length > 0 ? (
@@ -2438,8 +2624,9 @@ function RecursosPanel() {
   );
 }
 
-function DietasPanel({ fullscreen }: { fullscreen: boolean }) {
+function DietasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: () => void }) {
   const [client, setClient] = useState<{ id: string; name: string } | null>(null);
+  const [search, setSearch] = useState("");
 
   const { data: clients, isLoading } = useQuery({
     queryKey: ["clientes-dietas"],
@@ -2458,46 +2645,62 @@ function DietasPanel({ fullscreen }: { fullscreen: boolean }) {
         patientId={client.id}
         patientName={client.name}
         onBack={() => setClient(null)}
+        onClose={onClose}
         fullscreen={fullscreen}
       />
     );
   }
 
-  return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">Elige un cliente para editar su dieta semanal.</p>
-      <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-elevated)]">
-        {isLoading ? (
-          <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
-        ) : clients && clients.length > 0 ? (
-          <ul className="divide-y divide-border">
-            {clients.map((c) => (
-              <li key={c.id}>
-                <button
-                  type="button"
-                  onClick={() => setClient({ id: c.id, name: `${c.first_name} ${c.last_name}`.trim() })}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-muted/50"
-                >
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary-soft text-sm font-medium text-foreground">
-                    {(c.first_name?.[0] ?? "") + (c.last_name?.[0] ?? "")}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-foreground">
-                      {c.first_name} {c.last_name}
-                    </div>
-                    <div className="truncate text-xs text-muted-foreground">{c.email}</div>
+  const q = search.trim().toLowerCase();
+  const filtered = (clients ?? []).filter(
+    (c) => !q || `${c.first_name ?? ""} ${c.last_name ?? ""} ${c.email ?? ""}`.toLowerCase().includes(q),
+  );
+
+  const list = (
+    <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-elevated)]">
+      {isLoading ? (
+        <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
+      ) : filtered.length > 0 ? (
+        <ul className="divide-y divide-border">
+          {filtered.map((c) => (
+            <li key={c.id}>
+              <button
+                type="button"
+                onClick={() => setClient({ id: c.id, name: `${c.first_name} ${c.last_name}`.trim() })}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-muted/50"
+              >
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary-soft text-sm font-medium text-foreground">
+                  {(c.first_name?.[0] ?? "") + (c.last_name?.[0] ?? "")}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-foreground">
+                    {c.first_name} {c.last_name}
                   </div>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="p-8 text-center text-sm text-muted-foreground">
-            Aún no tienes clientes. Créalos en la tarjeta “Clientes”.
-          </div>
-        )}
-      </div>
+                  <div className="truncate text-xs text-muted-foreground">{c.email}</div>
+                </div>
+                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="p-8 text-center text-sm text-muted-foreground">
+          {q ? "No hay clientes que coincidan." : "Aún no tienes clientes. Créalos en la tarjeta “Clientes”."}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
+      <PanelToolbar
+        info="Elige un cliente"
+        search={search}
+        setSearch={setSearch}
+        searchPlaceholder="Buscar cliente…"
+        onClose={onClose}
+      />
+      {fullscreen ? <div className="min-h-0 flex-1 overflow-y-auto pr-1">{list}</div> : list}
     </div>
   );
 }
@@ -3045,11 +3248,13 @@ function DietEditor({
   patientId,
   patientName,
   onBack,
+  onClose,
   fullscreen,
 }: {
   patientId: string;
   patientName: string;
   onBack: () => void;
+  onClose: () => void;
   fullscreen: boolean;
 }) {
   const qc = useQueryClient();
@@ -3226,48 +3431,81 @@ function DietEditor({
     }
   }
 
+  const days = (
+    <div
+      className={cn(
+        "flex gap-2",
+        fullscreen ? "flex-nowrap justify-center overflow-x-auto pb-1" : "flex-wrap",
+      )}
+    >
+      {DAYS.map((d) => {
+        const active = activeDay === d.id;
+        return (
+          <button
+            key={d.id}
+            type="button"
+            onClick={() => setActiveDay(d.id)}
+            className={cn(
+              "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition",
+              active
+                ? "bg-primary text-primary-foreground shadow-[var(--shadow-soft)]"
+                : "bg-card text-foreground shadow-[var(--shadow-elevated)] hover:opacity-90",
+            )}
+          >
+            {d.label}
+            {dayFilled(d.id) && (
+              <span
+                className={cn(
+                  "ml-2 inline-block h-1.5 w-1.5 rounded-full align-middle",
+                  active ? "bg-primary-foreground" : "bg-primary",
+                )}
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const weekControls = (
+    <div className="flex shrink-0 items-center justify-end gap-2">
+      <Label htmlFor="diet-week" className="text-sm text-muted-foreground">
+        Semana
+      </Label>
+      <Input
+        id="diet-week"
+        type="number"
+        min={1}
+        value={week}
+        onChange={(e) => setWeek(Math.max(1, Number(e.target.value) || 1))}
+        className="w-16 bg-card shadow-[var(--shadow-elevated)]"
+      />
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={downloadPdf}
+        disabled={pdfLoading}
+        title="Descargar la dieta de este cliente en PDF"
+      >
+        {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} PDF
+      </Button>
+    </div>
+  );
+
   return (
     <div className={fullscreen ? "flex h-full min-h-0 flex-col space-y-2" : "space-y-4"}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground transition hover:text-primary"
-        >
-          <ChevronRight className="h-4 w-4 rotate-180 text-muted-foreground" /> {patientName}
-        </button>
-        <div className="flex items-center gap-2">
-          <Label htmlFor="diet-week" className="text-sm">
-            Semana
-          </Label>
-          <Input
-            id="diet-week"
-            type="number"
-            min={1}
-            value={week}
-            onChange={(e) => setWeek(Math.max(1, Number(e.target.value) || 1))}
-            className="w-20 bg-card shadow-[var(--shadow-elevated)]"
-          />
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={downloadPdf}
-            disabled={pdfLoading}
-            title="Descargar la dieta de este cliente en PDF"
-          >
-            {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} PDF
-          </Button>
-          <Button size="sm" onClick={save} disabled={saving}>
-            {saving ? (
-              <LoadingBar />
-            ) : (
-              <>
-                <Plus className="h-4 w-4" /> Guardar
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
+      {/* Línea estándar: volver + Guardar + X (igual que el resto de secciones) */}
+      <PanelToolbar info={patientName} onBack={onBack} onClose={onClose}>
+        <Button size="sm" onClick={save} disabled={saving} className="shrink-0">
+          {saving ? (
+            <LoadingBar />
+          ) : (
+            <>
+              <Save className="h-4 w-4" /> Guardar
+            </>
+          )}
+        </Button>
+      </PanelToolbar>
 
       {(recipes?.length ?? 0) === 0 && (
         <div className="rounded-2xl bg-secondary/50 p-4 text-sm text-foreground">
@@ -3275,38 +3513,12 @@ function DietEditor({
         </div>
       )}
 
-      <div
-        className={cn(
-          "flex gap-2",
-          fullscreen ? "flex-nowrap justify-center overflow-x-auto pb-1" : "flex-wrap",
-        )}
-      >
-        {DAYS.map((d) => {
-          const active = activeDay === d.id;
-          return (
-            <button
-              key={d.id}
-              type="button"
-              onClick={() => setActiveDay(d.id)}
-              className={cn(
-                "rounded-full px-4 py-2 text-sm font-medium transition",
-                active
-                  ? "bg-primary text-primary-foreground shadow-[var(--shadow-soft)]"
-                  : "bg-card text-foreground shadow-[var(--shadow-elevated)] hover:opacity-90",
-              )}
-            >
-              {d.label}
-              {dayFilled(d.id) && (
-                <span
-                  className={cn(
-                    "ml-2 inline-block h-1.5 w-1.5 rounded-full align-middle",
-                    active ? "bg-primary-foreground" : "bg-primary",
-                  )}
-                />
-              )}
-            </button>
-          );
-        })}
+      {/* Sección de información de esta tarjeta: días de la semana (centrados)
+          con Semana + PDF a la misma altura. */}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+        <div className="min-w-0" />
+        <div className="min-w-0">{days}</div>
+        {weekControls}
       </div>
 
       {isLoading ? (
@@ -3694,10 +3906,11 @@ function DietEditor({
   );
 }
 
-function ClientesPanel() {
+function ClientesPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const [mode, setMode] = useState<"list" | "new">("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const { data: clients, isLoading } = useQuery({
     queryKey: ["clientes-list"],
@@ -3714,7 +3927,9 @@ function ClientesPanel() {
     return (
       <ClientDetail
         id={selectedId}
+        fullscreen={fullscreen}
         onBack={() => setSelectedId(null)}
+        onClose={onClose}
         onSaved={() => qc.invalidateQueries({ queryKey: ["clientes-list"] })}
       />
     );
@@ -3723,7 +3938,9 @@ function ClientesPanel() {
   if (mode === "new") {
     return (
       <NewClientForm
+        fullscreen={fullscreen}
         onCancel={() => setMode("list")}
+        onClose={onClose}
         onCreated={() => {
           qc.invalidateQueries({ queryKey: ["clientes-list"] });
           setMode("list");
@@ -3732,23 +3949,18 @@ function ClientesPanel() {
     );
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-sm text-muted-foreground">
-          {isLoading ? "Cargando…" : `${clients?.length ?? 0} clientes`}
-        </span>
-        <Button size="sm" onClick={() => setMode("new")}>
-          <Plus className="h-4 w-4" /> Nuevo cliente
-        </Button>
-      </div>
+  const q = search.trim().toLowerCase();
+  const filtered = (clients ?? []).filter(
+    (c) => !q || `${c.first_name ?? ""} ${c.last_name ?? ""} ${c.email ?? ""}`.toLowerCase().includes(q),
+  );
 
-      <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-elevated)]">
-        {isLoading ? (
-          <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
-        ) : clients && clients.length > 0 ? (
-          <ul className="divide-y divide-border">
-            {clients.map((c) => (
+  const list = (
+    <div className="overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-elevated)]">
+      {isLoading ? (
+        <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
+      ) : filtered.length > 0 ? (
+        <ul className="divide-y divide-border">
+          {filtered.map((c) => (
               <li key={c.id}>
                 <button
                   type="button"
@@ -3769,12 +3981,28 @@ function ClientesPanel() {
               </li>
             ))}
           </ul>
-        ) : (
-          <div className="p-8 text-center text-sm text-muted-foreground">
-            Aún no tienes clientes. Pulsa “Nuevo cliente” para crear el primero.
-          </div>
-        )}
-      </div>
+      ) : (
+        <div className="p-8 text-center text-sm text-muted-foreground">
+          {q ? "No hay clientes que coincidan." : "Aún no tienes clientes. Pulsa “Nuevo cliente” para crear el primero."}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
+      <PanelToolbar
+        info={isLoading ? "Cargando…" : `${filtered.length} clientes`}
+        search={search}
+        setSearch={setSearch}
+        searchPlaceholder="Buscar cliente…"
+        onClose={onClose}
+      >
+        <Button size="sm" onClick={() => setMode("new")} className="shrink-0">
+          <Plus className="h-4 w-4" /> Nuevo cliente
+        </Button>
+      </PanelToolbar>
+      {fullscreen ? <div className="min-h-0 flex-1 overflow-y-auto pr-1">{list}</div> : list}
     </div>
   );
 }
@@ -3821,7 +4049,17 @@ function ClientField({
   );
 }
 
-function NewClientForm({ onCancel, onCreated }: { onCancel: () => void; onCreated: () => void }) {
+function NewClientForm({
+  fullscreen,
+  onCancel,
+  onClose,
+  onCreated,
+}: {
+  fullscreen: boolean;
+  onCancel: () => void;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
   const create = useServerFn(createPatient);
   const [loading, setLoading] = useState(false);
   const [password, setPassword] = useState("");
@@ -3861,7 +4099,8 @@ function NewClientForm({ onCancel, onCreated }: { onCancel: () => void; onCreate
 
   if (result) {
     return (
-      <div className="space-y-5">
+      <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-5")}>
+        <PanelToolbar info="Nuevo cliente" onBack={onCancel} onClose={onClose} />
         <div className="rounded-2xl bg-card p-5 shadow-[var(--shadow-elevated)]">
           <h4 className="font-semibold text-foreground">Cliente creado ✅</h4>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -3892,7 +4131,9 @@ function NewClientForm({ onCancel, onCreated }: { onCancel: () => void; onCreate
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form onSubmit={onSubmit} className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
+      <PanelToolbar info="Nuevo cliente" onBack={onCancel} onClose={onClose} />
+      <div className={cn(fullscreen ? "min-h-0 flex-1 space-y-4 overflow-y-auto pr-1" : "space-y-4")}>
       <div className="grid gap-3 sm:grid-cols-2">
         <ClientField label="Nombre" name="first_name" required />
         <ClientField label="Apellidos" name="last_name" required />
@@ -3951,6 +4192,7 @@ function NewClientForm({ onCancel, onCreated }: { onCancel: () => void; onCreate
             </>
           )}
         </Button>
+      </div>
       </div>
     </form>
   );
@@ -4110,7 +4352,19 @@ function ProgressSection({ clientId }: { clientId: string }) {
   );
 }
 
-function ClientDetail({ id, onBack, onSaved }: { id: string; onBack: () => void; onSaved: () => void }) {
+function ClientDetail({
+  id,
+  fullscreen,
+  onBack,
+  onClose,
+  onSaved,
+}: {
+  id: string;
+  fullscreen: boolean;
+  onBack: () => void;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
   const { data: p, isLoading } = useQuery({
@@ -4153,15 +4407,13 @@ function ClientDetail({ id, onBack, onSaved }: { id: string; onBack: () => void;
   }
 
   return (
-    <div className="space-y-4">
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition hover:text-foreground"
-      >
-        <ChevronRight className="h-4 w-4 rotate-180" /> Volver a la lista
-      </button>
-
+    <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
+      <PanelToolbar
+        info={p ? `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || "Ficha del cliente" : "Ficha del cliente"}
+        onBack={onBack}
+        onClose={onClose}
+      />
+      <div className={cn(fullscreen ? "min-h-0 flex-1 space-y-4 overflow-y-auto pr-1" : "space-y-4")}>
       {isLoading ? (
         <div className="p-6 text-sm text-muted-foreground">Cargando…</div>
       ) : !p ? (
@@ -4263,6 +4515,7 @@ function ClientDetail({ id, onBack, onSaved }: { id: string; onBack: () => void;
           <ProgressSection clientId={id} />
         </>
       )}
+      </div>
     </div>
   );
 }
