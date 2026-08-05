@@ -1384,6 +1384,13 @@ const MACRO = {
 };
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
+type NutritionTarget = {
+  target_kcal: number | null;
+  target_prot: number | null;
+  target_fat: number | null;
+  target_carb: number | null;
+};
+
 function MacroTiles({ macro, note }: { macro: Macro; note?: string }) {
   const items = [
     { label: "Energía", val: Math.round(macro.kcal), unit: "kcal", color: MACRO.kcal },
@@ -1450,40 +1457,56 @@ function MacroDonut({ macro, size = 92 }: { macro: Macro; size?: number }) {
   );
 }
 
-function DayAnalysis({ macro, heading = "Análisis del día" }: { macro: Macro; heading?: string }) {
+function DayAnalysis({
+  macro,
+  target,
+  heading = "Análisis del día",
+}: {
+  macro: Macro;
+  target?: NutritionTarget | null;
+  heading?: string;
+}) {
   const bars = [
-    { label: "Grasa", val: macro.fat, color: MACRO.fat },
-    { label: "Hidratos de carbono", val: macro.carb, color: MACRO.carb },
-    { label: "Proteína", val: macro.prot, color: MACRO.prot },
-    { label: "Fibra alimentaria", val: macro.fiber, color: MACRO.fiber },
+    { label: "Grasa", val: macro.fat, tgt: target?.target_fat ?? null, color: MACRO.fat },
+    { label: "Hidratos de carbono", val: macro.carb, tgt: target?.target_carb ?? null, color: MACRO.carb },
+    { label: "Proteína", val: macro.prot, tgt: target?.target_prot ?? null, color: MACRO.prot },
+    { label: "Fibra alimentaria", val: macro.fiber, tgt: null as number | null, color: MACRO.fiber },
   ];
   const maxG = Math.max(1, macro.fat, macro.carb, macro.prot, macro.fiber);
+  const tkcal = target?.target_kcal ?? null;
   return (
     <div className="rounded-2xl bg-card p-4 shadow-[var(--shadow-elevated)]">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-foreground">{heading}</p>
         <p className="text-sm">
-          <span className="font-bold text-foreground">{Math.round(macro.kcal)}</span>{" "}
+          <span className="font-bold text-foreground">{Math.round(macro.kcal)}</span>
+          {tkcal ? <span className="text-xs text-muted-foreground"> / {tkcal}</span> : null}{" "}
           <span className="text-xs text-muted-foreground">kcal</span>
         </p>
       </div>
       <div className="mt-3 flex items-center gap-4">
         <MacroDonut macro={macro} />
         <div className="flex-1 space-y-2">
-          {bars.map((b) => (
-            <div key={b.label}>
-              <div className="flex items-center justify-between gap-2 text-xs">
-                <span className="truncate text-muted-foreground">{b.label}</span>
-                <span className="shrink-0 font-semibold text-foreground">{round1(b.val)} g</span>
+          {bars.map((b) => {
+            const pct = b.tgt && b.tgt > 0 ? (b.val / b.tgt) * 100 : (b.val / maxG) * 100;
+            return (
+              <div key={b.label}>
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="truncate text-muted-foreground">{b.label}</span>
+                  <span className="shrink-0 font-semibold text-foreground">
+                    {round1(b.val)}
+                    {b.tgt ? ` / ${round1(b.tgt)}` : ""} g
+                  </span>
+                </div>
+                <div className="mt-0.5 h-1.5 w-full overflow-hidden rounded-full bg-secondary/60">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${Math.min(100, pct)}%`, background: b.color }}
+                  />
+                </div>
               </div>
-              <div className="mt-0.5 h-1.5 w-full overflow-hidden rounded-full bg-secondary/60">
-                <div
-                  className="h-full rounded-full transition-all"
-                  style={{ width: `${Math.min(100, (b.val / maxG) * 100)}%`, background: b.color }}
-                />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -2324,6 +2347,7 @@ function VisualDietBoard({
   setDragOver,
   fullscreen,
   macrosByMeal,
+  target,
 }: {
   activeDay: number;
   recipes: BoardRecipe[];
@@ -2335,6 +2359,7 @@ function VisualDietBoard({
   setDragOver: (v: string | null) => void;
   fullscreen: boolean;
   macrosByMeal: Record<string, Macro>;
+  target: NutritionTarget | null;
 }) {
   const dayMacro = MEALS.reduce((a, m) => addMacro(a, macrosByMeal[m.id] ?? zeroMacro()), zeroMacro());
   const [activeMeal, setActiveMeal] = useState<string | null>(null);
@@ -2485,7 +2510,7 @@ function VisualDietBoard({
 
       {/* Comidas del día + análisis nutricional */}
       <div className="space-y-3">
-        {hasNutrients && dayMacro.kcal > 0 && <DayAnalysis macro={dayMacro} />}
+        {hasNutrients && dayMacro.kcal > 0 && <DayAnalysis macro={dayMacro} target={target} />}
         <div className={cn("grid gap-2.5 sm:grid-cols-2", fullscreen && "lg:grid-cols-3")}>
         {MEALS.map((m) => {
           const key = `${activeDay}-${m.id}`;
@@ -2767,6 +2792,18 @@ function DietEditor({
     },
   });
 
+  const { data: target } = useQuery({
+    queryKey: ["client-target", patientId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("target_kcal, target_prot, target_fat, target_carb")
+        .eq("id", patientId)
+        .single();
+      return data;
+    },
+  });
+
   useEffect(() => {
     if (!recipes) return;
     const map: Record<string, MealValue> = {};
@@ -2977,6 +3014,7 @@ function DietEditor({
           setDragOver={setDragOverMeal}
           fullscreen={fullscreen}
           macrosByMeal={macrosByMeal}
+          target={target ?? null}
         />
       )}
       {false && (
@@ -3609,6 +3647,7 @@ function NewClientForm({ onCancel, onCreated }: { onCancel: () => void; onCreate
 }
 
 function ClientDetail({ id, onBack, onSaved }: { id: string; onBack: () => void; onSaved: () => void }) {
+  const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
   const { data: p, isLoading } = useQuery({
     queryKey: ["cliente-detalle", id],
@@ -3633,8 +3672,13 @@ function ClientDetail({ id, onBack, onSaved }: { id: string; onBack: () => void;
       sex: sexValue === "none" || sexValue === "" ? null : sexValue,
       height: fd.get("height") ? Number(fd.get("height")) : null,
       observations: (fd.get("observations") as string) || null,
+      target_kcal: fd.get("target_kcal") ? Number(fd.get("target_kcal")) : null,
+      target_prot: fd.get("target_prot") ? Number(fd.get("target_prot")) : null,
+      target_fat: fd.get("target_fat") ? Number(fd.get("target_fat")) : null,
+      target_carb: fd.get("target_carb") ? Number(fd.get("target_carb")) : null,
     };
     const { error } = await supabase.from("profiles").update(payload).eq("id", id);
+    qc.invalidateQueries({ queryKey: ["client-target", id] });
     setSaving(false);
     if (error) {
       toast.error("No se pudo guardar", { description: error.message });
@@ -3710,6 +3754,41 @@ function ClientDetail({ id, onBack, onSaved }: { id: string; onBack: () => void;
                 className="bg-card shadow-[var(--shadow-elevated)]"
               />
             </div>
+            <div className="sm:col-span-2">
+              <p className="mb-2 mt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Objetivos nutricionales (por día)
+              </p>
+              <div className="grid gap-3 sm:grid-cols-4">
+                <ClientField
+                  label="Energía (kcal)"
+                  name="target_kcal"
+                  type="number"
+                  defaultValue={p.target_kcal != null ? String(p.target_kcal) : ""}
+                />
+                <ClientField
+                  label="Proteína (g)"
+                  name="target_prot"
+                  type="number"
+                  step="0.1"
+                  defaultValue={p.target_prot != null ? String(p.target_prot) : ""}
+                />
+                <ClientField
+                  label="Grasa (g)"
+                  name="target_fat"
+                  type="number"
+                  step="0.1"
+                  defaultValue={p.target_fat != null ? String(p.target_fat) : ""}
+                />
+                <ClientField
+                  label="Hidratos (g)"
+                  name="target_carb"
+                  type="number"
+                  step="0.1"
+                  defaultValue={p.target_carb != null ? String(p.target_carb) : ""}
+                />
+              </div>
+            </div>
+
             <div className="flex justify-end pt-2 sm:col-span-2">
               <Button type="submit" disabled={saving}>
                 {saving ? <LoadingBar /> : "Guardar cambios"}

@@ -186,6 +186,10 @@ export type Database = {
           observations: string | null
           phone: string | null
           sex: string | null
+          target_carb: number | null
+          target_fat: number | null
+          target_kcal: number | null
+          target_prot: number | null
           updated_at: string
         }
         Insert: {
@@ -204,6 +208,10 @@ export type Database = {
           observations?: string | null
           phone?: string | null
           sex?: string | null
+          target_carb?: number | null
+          target_fat?: number | null
+          target_kcal?: number | null
+          target_prot?: number | null
           updated_at?: string
         }
         Update: {
@@ -222,6 +230,10 @@ export type Database = {
           observations?: string | null
           phone?: string | null
           sex?: string | null
+          target_carb?: number | null
+          target_fat?: number | null
+          target_kcal?: number | null
+          target_prot?: number | null
           updated_at?: string
         }
         Relationships: []
