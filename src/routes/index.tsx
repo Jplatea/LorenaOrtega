@@ -52,7 +52,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Reveal } from "@/components/reveal";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { createPatient, resetPatientPassword, saveDietPdf } from "@/lib/patients.functions";
+import { createPatient, resetPatientPassword, saveDietPdf, attachResourceToPatient } from "@/lib/patients.functions";
 import { MEALS, DAYS } from "@/lib/domain";
 import { ensureIngredients, renderIngredients } from "@/lib/recipes";
 import { parseMeal, serializeMeal, renderMeal, type MealValue } from "@/lib/meal-options";
@@ -4674,8 +4674,10 @@ function ClientDiets({ patientId }: { patientId: string }) {
 
 function ClientDocuments({ patientId }: { patientId: string }) {
   const qc = useQueryClient();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
+  const attachFn = useServerFn(attachResourceToPatient);
+  const [picking, setPicking] = useState(false);
+  const [adding, setAdding] = useState<string | null>(null);
+  const [resSearch, setResSearch] = useState("");
   const { data: docs, isLoading } = useQuery({
     queryKey: ["client-docs", patientId],
     queryFn: async () => {
@@ -4687,38 +4689,37 @@ function ClientDocuments({ patientId }: { patientId: string }) {
       return data ?? [];
     },
   });
+  // Recursos (archivos) ya subidos en la tarjeta "Recursos".
+  const { data: resources } = useQuery({
+    queryKey: ["recursos-list"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("resources")
+        .select("id, kind, title, file_path, mime_type, category")
+        .order("created_at", { ascending: false });
+      return (data ?? []) as ResourceItem[];
+    },
+  });
   const refresh = () => qc.invalidateQueries({ queryKey: ["client-docs", patientId] });
 
-  async function upload(file: File) {
-    setUploading(true);
-    const { data: u } = await supabase.auth.getUser();
-    const safe = file.name.replace(/[^\w.\-]/g, "_");
-    const path = `${patientId}/${crypto.randomUUID()}-${safe}`;
-    const { error: upErr } = await supabase.storage
-      .from("patient-documents")
-      .upload(path, file, { contentType: file.type || undefined });
-    if (upErr) {
-      setUploading(false);
-      toast.error("No se pudo subir", { description: upErr.message });
-      return;
+  const rq = resSearch.trim().toLowerCase();
+  const fileResources = (resources ?? []).filter(
+    (r) => r.kind === "file" && r.file_path && (!rq || r.title.toLowerCase().includes(rq)),
+  );
+
+  async function addResource(resourceId: string) {
+    setAdding(resourceId);
+    try {
+      await attachFn({ data: { patient_id: patientId, resource_id: resourceId } });
+      toast.success("Documento añadido al expediente ✓");
+      qc.invalidateQueries({ queryKey: ["client-docs", patientId] });
+      qc.invalidateQueries({ queryKey: ["portal-docs"] });
+      setPicking(false);
+    } catch (err) {
+      toast.error("No se pudo añadir el documento", { description: err instanceof Error ? err.message : undefined });
+    } finally {
+      setAdding(null);
     }
-    const { error } = await supabase.from("patient_documents").insert({
-      patient_id: patientId,
-      uploaded_by: u.user?.id ?? patientId,
-      title: file.name,
-      file_path: path,
-      mime_type: file.type || null,
-      size_bytes: file.size,
-      category: "other",
-    } as never);
-    setUploading(false);
-    if (error) {
-      await supabase.storage.from("patient-documents").remove([path]);
-      toast.error("No se pudo guardar", { description: error.message });
-      return;
-    }
-    toast.success("Documento subido ✓");
-    refresh();
   }
 
   async function remove(doc: { id: string; file_path: string }) {
@@ -4742,22 +4743,43 @@ function ClientDocuments({ patientId }: { patientId: string }) {
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-foreground">Documentos del paciente</p>
-          <p className="text-xs text-muted-foreground">Los verá en su portal para descargarlos.</p>
+          <p className="text-xs text-muted-foreground">
+            Añade recursos ya subidos en «Recursos». El PDF de la dieta se genera solo al guardar.
+          </p>
         </div>
-        <input
-          ref={fileRef}
-          type="file"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) upload(f);
-            e.target.value = "";
-          }}
-        />
-        <Button size="sm" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()} className="shrink-0">
-          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Subir
+        <Button size="sm" variant="outline" onClick={() => setPicking((v) => !v)} className="shrink-0">
+          <Plus className="h-4 w-4" /> Añadir documento
         </Button>
       </div>
+
+      {picking && (
+        <div className="mt-3 rounded-xl border border-border bg-secondary/20 p-3">
+          <Input
+            value={resSearch}
+            onChange={(e) => setResSearch(e.target.value)}
+            placeholder="Buscar recurso…"
+            className="mb-2 h-9 bg-card shadow-[var(--shadow-soft)]"
+          />
+          {fileResources.length > 0 ? (
+            <ul className="max-h-56 space-y-1 overflow-y-auto pr-1">
+              {fileResources.map((r) => (
+                <li key={r.id} className="flex items-center gap-2 rounded-lg bg-card px-3 py-2 shadow-[var(--shadow-soft)]">
+                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">{r.title}</span>
+                  <Button size="sm" variant="outline" disabled={adding === r.id} onClick={() => addResource(r.id)} className="shrink-0">
+                    {adding === r.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Añadir
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No hay archivos en «Recursos». Súbelos primero en la tarjeta Recursos.
+            </p>
+          )}
+        </div>
+      )}
+
       {isLoading ? null : docs && docs.length > 0 ? (
         <ul className="mt-3 space-y-1.5">
           {docs.map((doc) => (
@@ -5006,53 +5028,48 @@ function ClientDetail({
         <div className="p-6 text-sm text-muted-foreground">Cliente no encontrado.</div>
       ) : (
         <>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-primary-soft text-base font-medium text-foreground">
               {(p.first_name?.[0] ?? "") + (p.last_name?.[0] ?? "")}
             </span>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="truncate text-lg font-semibold text-foreground">
                 {p.first_name} {p.last_name}
               </div>
               <div className="truncate text-sm text-muted-foreground">{p.email}</div>
             </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={generatePassword}
+              disabled={pwLoading}
+              className="shrink-0"
+              title="Genera una contraseña de acceso al portal (se le pedirá cambiarla al entrar)"
+            >
+              {pwLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {pwResult ? "Regenerar contraseña" : "Generar contraseña"}
+            </Button>
           </div>
 
-          {/* Acceso al portal del paciente: generar/restablecer contraseña */}
-          <div className="rounded-2xl border-2 border-[#E0A64B]/60 bg-[#E0A64B]/[0.06] p-4 shadow-[var(--shadow-soft)]">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          {pwResult && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border-2 border-[#E0A64B] bg-[#E0A64B]/[0.06] px-4 py-3">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground">Acceso del paciente</p>
-                <p className="text-xs text-muted-foreground">
-                  Genera una contraseña para que {p.first_name || "el paciente"} entre a su panel con{" "}
-                  <span className="font-medium text-foreground">{p.email}</span>. Se le pedirá cambiarla al entrar.
-                </p>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[#B07A20]">Contraseña temporal</p>
+                <span className="font-mono text-lg text-foreground">{pwResult}</span>
               </div>
-              <Button size="sm" variant="outline" onClick={generatePassword} disabled={pwLoading} className="shrink-0">
-                {pwLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                {pwResult ? "Regenerar contraseña" : "Generar contraseña"}
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0"
+                onClick={() => {
+                  navigator.clipboard.writeText(pwResult);
+                  toast.success("Copiada");
+                }}
+              >
+                <Copy className="h-4 w-4" /> Copiar
               </Button>
             </div>
-            {pwResult && (
-              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border-2 border-[#E0A64B] bg-card px-4 py-3">
-                <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-[#B07A20]">Contraseña temporal</p>
-                  <span className="font-mono text-lg text-foreground">{pwResult}</span>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="shrink-0"
-                  onClick={() => {
-                    navigator.clipboard.writeText(pwResult);
-                    toast.success("Copiada");
-                  }}
-                >
-                  <Copy className="h-4 w-4" /> Copiar
-                </Button>
-              </div>
-            )}
-          </div>
+          )}
 
           <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-2">
             <ClientField label="Nombre" name="first_name" defaultValue={p.first_name ?? ""} required />

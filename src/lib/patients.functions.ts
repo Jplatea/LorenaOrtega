@@ -185,6 +185,50 @@ export const saveDietPdf = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/** Adjunta un recurso (archivo ya subido en la tarjeta "Recursos") al expediente
+ *  de un paciente: copia el archivo al bucket privado patient-documents (bajo la
+ *  carpeta del paciente, para que pueda leerlo) y crea el registro. */
+export const attachResourceToPatient = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) =>
+    z.object({ patient_id: z.string().uuid(), resource_id: z.string().uuid() }).parse(data),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: res, error: rErr } = await supabaseAdmin
+      .from("resources")
+      .select("title, file_path, mime_type, kind")
+      .eq("id", data.resource_id)
+      .maybeSingle();
+    if (rErr) throw new Error(rErr.message);
+    if (!res || res.kind !== "file" || !res.file_path) throw new Error("El recurso no es un archivo subido");
+
+    const dl = await supabaseAdmin.storage.from("resources").download(res.file_path);
+    if (dl.error || !dl.data) throw new Error(dl.error?.message ?? "No se pudo leer el recurso");
+    const bytes = new Uint8Array(await dl.data.arrayBuffer());
+
+    const safe = (res.title || "documento").replace(/[^\w.\-]/g, "_");
+    const path = `${data.patient_id}/${crypto.randomUUID()}-${safe}`;
+    const up = await supabaseAdmin.storage
+      .from("patient-documents")
+      .upload(path, bytes, { contentType: res.mime_type ?? undefined, upsert: false });
+    if (up.error) throw new Error(up.error.message);
+
+    const { error: insErr } = await supabaseAdmin.from("patient_documents").insert({
+      patient_id: data.patient_id,
+      uploaded_by: context.userId,
+      title: res.title,
+      file_path: path,
+      mime_type: res.mime_type,
+      size_bytes: bytes.length,
+      category: "other",
+    });
+    if (insErr) throw new Error(insErr.message);
+    return { ok: true };
+  });
+
 export const deletePatient = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => z.object({ patient_id: z.string().uuid() }).parse(data))
