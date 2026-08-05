@@ -56,6 +56,7 @@ import { MEALS, DAYS } from "@/lib/domain";
 import { ensureIngredients, renderIngredients } from "@/lib/recipes";
 import { parseMeal, serializeMeal, type MealValue } from "@/lib/meal-options";
 import { buildDietPdf, type DietRow } from "@/lib/pdf-export";
+import BEDCA_FOODS from "@/data/bedca-foods.json";
 import { RecipeCombobox } from "@/components/recipe-combobox";
 
 export const Route = createFileRoute("/")({
@@ -1650,13 +1651,29 @@ function RecipeEditor({
       </div>
 
       <div className="space-y-2">
-        <Label>Ingredientes / cantidades</Label>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <Label>Ingredientes / cantidades</Label>
+          <span className="text-[11px] text-muted-foreground">
+            Autocompletado con la base de datos española de alimentos{" "}
+            <a href="https://www.bedca.net/" target="_blank" rel="noopener noreferrer" className="text-primary underline">
+              BEDCA
+            </a>
+          </span>
+        </div>
+        {/* Lista de alimentos BEDCA (una sola vez, compartida por todos los campos) */}
+        <datalist id="bedca-foods">
+          {BEDCA_FOODS.map((f) => (
+            <option key={f} value={f} />
+          ))}
+        </datalist>
         {ingredients.map((ing, i) => (
           <div key={i} className="flex items-center gap-2">
             <Input
               value={ing.name}
               onChange={(e) => setIngredients((p) => p.map((x, idx) => (idx === i ? { ...x, name: e.target.value } : x)))}
               placeholder="Ingrediente o paso"
+              list="bedca-foods"
+              autoComplete="off"
               className="flex-1 bg-card shadow-[var(--shadow-elevated)]"
             />
             <Input
