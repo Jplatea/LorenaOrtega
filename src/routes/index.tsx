@@ -2577,6 +2577,7 @@ function VisualDietBoard({
   dayMicros: Micros;
 }) {
   const dayMacro = MEALS.reduce((a, m) => addMacro(a, macrosByMeal[m.id] ?? zeroMacro()), zeroMacro());
+  const qc = useQueryClient();
   const [activeMeal, setActiveMeal] = useState<string | null>(null);
   const [customFor, setCustomFor] = useState<string | null>(null);
   const [cName, setCName] = useState("");
@@ -2623,19 +2624,54 @@ function VisualDietBoard({
       return { ...v, joiners };
     });
   };
-  const addCustom = (mealId: string) => {
-    const name = cName.trim();
-    if (!name) return;
-    const content = cDesc.trim() ? `${name}\n${cDesc.trim()}` : name;
+  const addOption = (mealId: string, opt: { recipeId: string; content: string }) => {
     const key = `${activeDay}-${mealId}`;
     update(key, (v) => {
       const empty = v.options.length === 1 && !v.options[0].recipeId && !v.options[0].content.trim();
-      if (empty) return { options: [{ recipeId: "", content }], joiners: [] };
-      return { options: [...v.options, { recipeId: "", content }], joiners: [...v.joiners, "y"] };
+      if (empty) return { options: [opt], joiners: [] };
+      return { options: [...v.options, opt], joiners: [...v.joiners, "y"] };
     });
+  };
+  const resetCustom = () => {
     setCName("");
     setCDesc("");
     setCustomFor(null);
+  };
+  // Añadir como producto local (solo para este paciente).
+  const addCustom = (mealId: string) => {
+    const name = cName.trim();
+    if (!name) return;
+    addOption(mealId, { recipeId: "", content: cDesc.trim() ? `${name}\n${cDesc.trim()}` : name });
+    resetCustom();
+  };
+  // Usar una receta existente de la base de datos.
+  const addExisting = (mealId: string, rec: BoardRecipe) => {
+    addOption(mealId, { recipeId: rec.id, content: rec.content });
+    resetCustom();
+  };
+  // Guardar como receta nueva en la BD y añadirla.
+  const saveAsRecipe = async (mealId: string) => {
+    const name = cName.trim();
+    if (!name) return;
+    const desc = cDesc.trim();
+    const { data: u } = await supabase.auth.getUser();
+    const ingredients = desc
+      ? desc.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => ({ name: l, amount: "" }))
+      : [];
+    const { data, error } = await supabase
+      .from("recipes")
+      .insert({ meal: mealId, title: name, content: desc, ingredients: ingredients as never, created_by: u.user?.id ?? null })
+      .select("id")
+      .single();
+    if (error || !data) {
+      toast.error("No se pudo guardar la receta", { description: error?.message });
+      return;
+    }
+    await qc.invalidateQueries({ queryKey: ["recipes-diet"] });
+    await qc.invalidateQueries({ queryKey: ["recetas-list"] });
+    addOption(mealId, { recipeId: data.id, content: desc });
+    toast.success("Receta guardada y añadida ✓");
+    resetCustom();
   };
   const addFoodItem = (mealId: string) => {
     const name = fName.trim();
@@ -2669,6 +2705,12 @@ function VisualDietBoard({
       <datalist id="bedca-diet-foods">
         {BEDCA_FOODS.map((f) => (
           <option key={f} value={f} />
+        ))}
+      </datalist>
+      {/* Títulos de recetas existentes para el autocompletado de "producto a medida" */}
+      <datalist id="board-recipe-titles">
+        {recipes.map((r) => (
+          <option key={r.id} value={r.title} />
         ))}
       </datalist>
       {/* Paleta de recetas (arrastrables) */}
@@ -2899,39 +2941,59 @@ function VisualDietBoard({
                   </div>
                 </div>
               ) : customFor === m.id ? (
-                <div className="mt-2 space-y-1.5 rounded-xl bg-secondary/40 p-2">
-                  <Input
-                    value={cName}
-                    onChange={(e) => setCName(e.target.value)}
-                    placeholder="Nombre del producto"
-                    autoFocus
-                    className="h-8 bg-card text-sm shadow-[var(--shadow-soft)]"
-                  />
-                  <Input
-                    value={cDesc}
-                    onChange={(e) => setCDesc(e.target.value)}
-                    placeholder="Descripción / cantidad (opcional)"
-                    className="h-8 bg-card text-sm shadow-[var(--shadow-soft)]"
-                  />
-                  <div className="flex justify-end gap-1.5">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="h-7"
-                      onClick={() => {
-                        setCustomFor(null);
-                        setCName("");
-                        setCDesc("");
-                      }}
-                    >
-                      Cancelar
-                    </Button>
-                    <Button type="button" size="sm" className="h-7" onClick={() => addCustom(m.id)}>
-                      Añadir
-                    </Button>
-                  </div>
-                </div>
+                (() => {
+                  const matched = recipes.find(
+                    (r) => r.title.trim().toLowerCase() === cName.trim().toLowerCase(),
+                  );
+                  return (
+                    <div className="mt-2 space-y-1.5 rounded-xl bg-secondary/40 p-2">
+                      <Input
+                        value={cName}
+                        onChange={(e) => setCName(e.target.value)}
+                        placeholder="Nombre (busca en tus recetas)…"
+                        list="board-recipe-titles"
+                        autoComplete="off"
+                        autoFocus
+                        className="h-8 bg-card text-sm shadow-[var(--shadow-soft)]"
+                      />
+                      {matched ? (
+                        <p className="px-1 text-[11px] font-medium text-primary">Ya existe esta receta — puedes usarla.</p>
+                      ) : (
+                        <Input
+                          value={cDesc}
+                          onChange={(e) => setCDesc(e.target.value)}
+                          placeholder="Descripción / ingredientes (opcional)"
+                          className="h-8 bg-card text-sm shadow-[var(--shadow-soft)]"
+                        />
+                      )}
+                      <div className="flex flex-wrap justify-end gap-1.5">
+                        <Button type="button" size="sm" variant="ghost" className="h-7" onClick={resetCustom}>
+                          Cancelar
+                        </Button>
+                        {matched ? (
+                          <Button type="button" size="sm" className="h-7" onClick={() => addExisting(m.id, matched)}>
+                            Usar receta
+                          </Button>
+                        ) : (
+                          <>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-7"
+                              onClick={() => addCustom(m.id)}
+                            >
+                              Solo local
+                            </Button>
+                            <Button type="button" size="sm" className="h-7" onClick={() => saveAsRecipe(m.id)}>
+                              Guardar receta
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()
               ) : (
                 <div className="mt-2 flex gap-1.5">
                   <button
