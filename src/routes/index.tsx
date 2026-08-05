@@ -52,7 +52,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Reveal } from "@/components/reveal";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { createPatient, resetPatientPassword } from "@/lib/patients.functions";
+import { createPatient, resetPatientPassword, saveDietPdf } from "@/lib/patients.functions";
 import { MEALS, DAYS } from "@/lib/domain";
 import { ensureIngredients, renderIngredients } from "@/lib/recipes";
 import { parseMeal, serializeMeal, renderMeal, type MealValue } from "@/lib/meal-options";
@@ -1239,10 +1239,10 @@ function PatientMeal({ content }: { content: string }) {
           {multi && (
             <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-primary">Opción {mi + 1}</p>
           )}
-          <ul className="space-y-1">
+          <ul className="space-y-0.5">
             {foods.map((f, fi) => (
-              <li key={fi} className="flex gap-2 text-sm text-foreground">
-                <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-primary/50" />
+              <li key={fi} className="flex gap-1.5 text-[11.5px] leading-snug text-foreground">
+                <span className="mt-[6px] h-1 w-1 shrink-0 rounded-full bg-primary/50" />
                 <span>{f}</span>
               </li>
             ))}
@@ -1297,18 +1297,18 @@ function PatientDayNutrition({ macro }: { macro: Macro }) {
     ["Fibra", macro.fiber, MACRO.fiber],
   ];
   return (
-    <div className="rounded-xl bg-card p-3 shadow-[var(--shadow-soft)]">
+    <div className="rounded-xl bg-card p-2.5 shadow-[var(--shadow-soft)]">
       <div className="flex items-center gap-2">
-        <MacroDonut macro={macro} size={40} />
+        <MacroDonut macro={macro} size={34} />
         <div>
           <span className="text-sm font-semibold text-foreground">{Math.round(macro.kcal)}</span>{" "}
-          <span className="text-[10px] text-muted-foreground">kcal</span>
+          <span className="text-[9px] text-muted-foreground">kcal</span>
         </div>
       </div>
-      <div className="mt-2 space-y-1">
+      <div className="mt-1.5 space-y-0.5">
         {bars.map(([label, val, color]) => (
           <div key={label}>
-            <div className="flex items-center justify-between text-[10px] leading-tight">
+            <div className="flex items-center justify-between text-[9px] leading-tight">
               <span className="text-muted-foreground">{label}</span>
               <span className="font-medium text-foreground">{round1(val)} g</span>
             </div>
@@ -1403,18 +1403,18 @@ function PatientPortal() {
                 <div key={d.id} className="rounded-2xl bg-secondary/20 p-3">
                   <div className="flex flex-col gap-3 lg:flex-row">
                     {/* Día + análisis nutricional (a la izquierda) */}
-                    <div className="lg:w-[230px] lg:shrink-0">
-                      <p className="mb-2 text-sm font-semibold text-primary lg:text-center">{d.label}</p>
+                    <div className="lg:w-[168px] lg:shrink-0">
+                      <p className="mb-1.5 text-sm font-semibold text-primary lg:text-center">{d.label}</p>
                       {hasNutrients && macro.kcal > 0 && <PatientDayNutrition macro={macro} />}
                     </div>
                     {/* Comidas del día en horizontal */}
-                    <div className="flex flex-1 gap-3 overflow-x-auto pb-1">
+                    <div className="flex flex-1 gap-2.5 overflow-x-auto pb-1">
                       {meals.map(({ meal, content }) => (
                         <div
                           key={meal.id}
-                          className="w-[210px] shrink-0 rounded-xl bg-card p-3 shadow-[var(--shadow-soft)]"
+                          className="w-[164px] shrink-0 rounded-xl bg-card p-2.5 shadow-[var(--shadow-soft)]"
                         >
-                          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          <p className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
                             {meal.label}
                           </p>
                           <PatientMeal content={content} />
@@ -3375,6 +3375,16 @@ function VisualDietBoard({
   );
 }
 
+/** Convierte un Blob a base64 (sin el prefijo data:) para enviarlo al servidor. */
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onerror = () => reject(new Error("No se pudo leer el PDF"));
+    r.onloadend = () => resolve(String(r.result).split(",")[1] ?? "");
+    r.readAsDataURL(blob);
+  });
+}
+
 function DietEditor({
   patientId,
   patientName,
@@ -3389,6 +3399,7 @@ function DietEditor({
   fullscreen: boolean;
 }) {
   const qc = useQueryClient();
+  const saveDietPdfFn = useServerFn(saveDietPdf);
   const [week, setWeek] = useState(1);
   const [activeDay, setActiveDay] = useState<number>(DAYS[0].id);
   const [rows, setRows] = useState<Record<string, MealValue>>({});
@@ -3568,47 +3579,19 @@ function DietEditor({
   // Genera el PDF de la dieta y lo guarda en el expediente del paciente (una
   // única copia por semana; se sobreescribe en cada guardado). No es bloqueante.
   async function syncDietPdf() {
-    const path = `${patientId}/dieta-semana-${week}.pdf`;
     try {
       const payload = buildPdfPayload();
+      const title = `Dieta — Semana ${week}`;
       if (!payload) {
-        // Dieta vacía: retira el PDF de esa semana si existía.
-        await supabase.storage.from("patient-documents").remove([path]);
-        await supabase.from("patient_documents").delete().eq("patient_id", patientId).eq("file_path", path);
+        // Dieta vacía: pide retirar el PDF de esa semana (base64 vacío).
+        await saveDietPdfFn({ data: { patient_id: patientId, week, title, base64: "" } });
+        qc.invalidateQueries({ queryKey: ["client-docs", patientId] });
         return;
       }
       const { blob } = await buildDietPdfBlob({ patientName, weekNumber: week, rows: payload.rows, dayNutrition: payload.dayNutrition });
-      const { error: upErr } = await supabase.storage
-        .from("patient-documents")
-        .upload(path, blob, { contentType: "application/pdf", upsert: true });
-      if (upErr) throw new Error(`Subida: ${upErr.message}`);
-      const title = `Dieta — Semana ${week}`;
-      const { data: u } = await supabase.auth.getUser();
-      const { data: existing, error: selErr } = await supabase
-        .from("patient_documents")
-        .select("id")
-        .eq("patient_id", patientId)
-        .eq("file_path", path)
-        .maybeSingle();
-      if (selErr) throw new Error(`Consulta: ${selErr.message}`);
-      if (existing?.id) {
-        const { error: updErr } = await supabase
-          .from("patient_documents")
-          .update({ title, mime_type: "application/pdf", size_bytes: blob.size } as never)
-          .eq("id", existing.id);
-        if (updErr) throw new Error(`Registro: ${updErr.message}`);
-      } else {
-        const { error: insErr } = await supabase.from("patient_documents").insert({
-          patient_id: patientId,
-          uploaded_by: u.user?.id ?? patientId,
-          title,
-          file_path: path,
-          mime_type: "application/pdf",
-          size_bytes: blob.size,
-          category: "diet",
-        } as never);
-        if (insErr) throw new Error(`Registro: ${insErr.message}`);
-      }
+      const base64 = await blobToBase64(blob);
+      // La subida la hace el servidor con service_role (fiable, sin RLS del cliente).
+      await saveDietPdfFn({ data: { patient_id: patientId, week, title, base64 } });
       qc.invalidateQueries({ queryKey: ["client-docs", patientId] });
       qc.invalidateQueries({ queryKey: ["portal-docs"] });
       toast.success("Copia PDF de la dieta guardada en el expediente ✓");

@@ -102,6 +102,68 @@ export const resetPatientPassword = createServerFn({ method: "POST" })
     return { tempPassword };
   });
 
+/** Sube (o retira, si base64 vacío) el PDF de la dieta de una semana al
+ *  expediente del paciente usando el service_role (evita problemas de RLS en el
+ *  cliente). Una única copia por semana: se sobreescribe. */
+export const saveDietPdf = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) =>
+    z
+      .object({
+        patient_id: z.string().uuid(),
+        week: z.number().int().positive(),
+        title: z.string().min(1).max(200),
+        base64: z.string().default(""),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.supabase, context.userId);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const path = `${data.patient_id}/dieta-semana-${data.week}.pdf`;
+
+    if (!data.base64) {
+      await supabaseAdmin.storage.from("patient-documents").remove([path]);
+      await supabaseAdmin.from("patient_documents").delete().eq("patient_id", data.patient_id).eq("file_path", path);
+      return { ok: true, removed: true };
+    }
+
+    const bin = atob(data.base64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+
+    const { error: upErr } = await supabaseAdmin.storage
+      .from("patient-documents")
+      .upload(path, bytes, { contentType: "application/pdf", upsert: true });
+    if (upErr) throw new Error(upErr.message);
+
+    const { data: existing } = await supabaseAdmin
+      .from("patient_documents")
+      .select("id")
+      .eq("patient_id", data.patient_id)
+      .eq("file_path", path)
+      .maybeSingle();
+    if (existing?.id) {
+      const { error } = await supabaseAdmin
+        .from("patient_documents")
+        .update({ title: data.title, mime_type: "application/pdf", size_bytes: bytes.length })
+        .eq("id", existing.id);
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await supabaseAdmin.from("patient_documents").insert({
+        patient_id: data.patient_id,
+        uploaded_by: context.userId,
+        title: data.title,
+        file_path: path,
+        mime_type: "application/pdf",
+        size_bytes: bytes.length,
+        category: "diet",
+      });
+      if (error) throw new Error(error.message);
+    }
+    return { ok: true };
+  });
+
 export const deletePatient = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => z.object({ patient_id: z.string().uuid() }).parse(data))
