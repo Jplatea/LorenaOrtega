@@ -41,6 +41,8 @@ import {
   ChevronDown,
   Search,
   User,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -2404,6 +2406,7 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
   const qc = useQueryClient();
   const [editing, setEditing] = useState<"new" | RecipeItem | null>(null);
   const [search, setSearch] = useState("");
+  const [view, setView] = useState<"card" | "list">("card");
 
   const { data: recipes, isLoading } = useQuery({
     queryKey: ["recetas-list"],
@@ -2484,6 +2487,68 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
     </div>
   );
 
+  const list = (
+    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-elevated)]">
+      {filtered.map((r) => {
+        const img = recipeImageUrl(r.image_path);
+        const manual = r.kcal != null || r.fat != null || r.carb != null || r.prot != null;
+        const per100 = manual
+          ? { kcal: r.kcal ?? 0, fat: r.fat ?? 0, carb: r.carb ?? 0, prot: r.prot ?? 0, fiber: 0 }
+          : macrosPer100g(r.ingredients);
+        const known = manual || anyKnown(r.ingredients);
+        return (
+          <div
+            key={r.id}
+            className="group flex items-center gap-3 border-b border-border px-3 py-2 transition last:border-0 hover:bg-muted/40"
+          >
+            <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-secondary/40">
+              {img ? (
+                <img src={img} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <BookOpen className="h-4 w-4 text-muted-foreground/50" />
+              )}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-foreground">{r.title}</p>
+              <p className="truncate text-[11px] text-muted-foreground">
+                {MEALS.find((m) => m.id === r.meal)?.label ?? r.meal}
+              </p>
+            </div>
+            {known && (
+              <div className="hidden shrink-0 items-center gap-2 text-[11px] sm:flex">
+                <span className="font-semibold" style={{ color: MACRO.kcal }}>
+                  {Math.round(per100.kcal)} kcal
+                </span>
+                <span style={{ color: MACRO.fat }}>G {round1(per100.fat)}</span>
+                <span style={{ color: MACRO.carb }}>HC {round1(per100.carb)}</span>
+                <span style={{ color: MACRO.prot }}>P {round1(per100.prot)}</span>
+              </div>
+            )}
+            <div className="flex shrink-0 gap-1 opacity-0 transition group-hover:opacity-100">
+              {[
+                { icon: Pencil, fn: () => setEditing(r), label: "Editar" },
+                { icon: Copy, fn: () => duplicate(r), label: "Duplicar" },
+                { icon: Trash2, fn: () => remove(r), label: "Eliminar" },
+              ].map(({ icon: Icon, fn, label }) => (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={fn}
+                  aria-label={label}
+                  className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground transition hover:text-foreground"
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const content = view === "card" ? grid : list;
+
   return (
     <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
       <PanelToolbar
@@ -2493,6 +2558,28 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
         searchPlaceholder="Buscar recetas…"
         onClose={onClose}
       >
+        <div className="flex shrink-0 rounded-lg border border-border p-0.5">
+          {(
+            [
+              ["card", LayoutGrid, "Vista tarjeta"],
+              ["list", List, "Vista listado"],
+            ] as const
+          ).map(([v, Icon, lbl]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              aria-label={lbl}
+              title={lbl}
+              className={cn(
+                "grid h-7 w-7 place-items-center rounded-md transition",
+                view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Icon className="h-4 w-4" />
+            </button>
+          ))}
+        </div>
         <Button size="sm" onClick={() => setEditing("new")} className="shrink-0">
           <Plus className="h-4 w-4" /> Nueva receta
         </Button>
@@ -2505,9 +2592,9 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
           {q ? "No hay recetas que coincidan." : "Aún no hay recetas. Pulsa “Nueva receta” para crear la primera."}
         </div>
       ) : fullscreen ? (
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1">{grid}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto pr-1">{content}</div>
       ) : (
-        grid
+        content
       )}
     </div>
   );
