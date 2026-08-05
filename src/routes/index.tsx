@@ -3628,6 +3628,7 @@ function DietEditor({
 }) {
   const qc = useQueryClient();
   const saveDietPdfFn = useServerFn(saveDietPdf);
+  const [pdfSyncError, setPdfSyncError] = useState<string | null>(null);
   const [week, setWeek] = useState(1);
   const [activeDay, setActiveDay] = useState<number>(DAYS[0].id);
   const [rows, setRows] = useState<Record<string, MealValue>>({});
@@ -3807,6 +3808,7 @@ function DietEditor({
   // Genera el PDF de la dieta y lo guarda en el expediente del paciente (una
   // única copia por semana; se sobreescribe en cada guardado). No es bloqueante.
   async function syncDietPdf() {
+    setPdfSyncError(null);
     try {
       const payload = buildPdfPayload();
       // El servidor genera el PDF y lo sube con service_role (fiable). Si la
@@ -3824,10 +3826,11 @@ function DietEditor({
       qc.invalidateQueries({ queryKey: ["portal-docs"] });
       if (payload) toast.success("Copia PDF de la dieta guardada en el expediente ✓");
     } catch (err) {
-      // El guardado de la dieta no debe fallar por el PDF; solo avisamos con el motivo.
-      toast.warning("Dieta guardada, pero no se pudo añadir el PDF al expediente", {
-        description: err instanceof Error ? err.message : undefined,
-      });
+      // El guardado de la dieta no debe fallar por el PDF; mostramos el motivo
+      // de forma persistente para poder diagnosticarlo.
+      const msg = err instanceof Error ? err.message : String(err);
+      setPdfSyncError(msg);
+      toast.warning("Dieta guardada, pero no se pudo añadir el PDF al expediente", { description: msg });
     }
   }
 
@@ -3974,6 +3977,28 @@ function DietEditor({
       {(recipes?.length ?? 0) === 0 && (
         <div className="rounded-2xl bg-secondary/50 p-4 text-sm text-foreground">
           Aún no hay recetas. Créalas en la tarjeta “Recetas” para poder asignarlas.
+        </div>
+      )}
+
+      {pdfSyncError && (
+        <div className="flex items-start justify-between gap-3 rounded-2xl border border-destructive/40 bg-destructive/5 p-3 text-sm">
+          <div className="min-w-0">
+            <p className="font-medium text-destructive">No se pudo guardar el PDF en el expediente</p>
+            <p className="mt-0.5 break-words text-xs text-muted-foreground">Motivo: {pdfSyncError}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Button size="sm" variant="outline" onClick={syncDietPdf}>
+              Reintentar
+            </Button>
+            <button
+              type="button"
+              onClick={() => setPdfSyncError(null)}
+              aria-label="Descartar"
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -4703,20 +4728,39 @@ function ClientDiets({ patientId }: { patientId: string }) {
   }
   const weeks = [...byWeek.entries()].map(([week, days]) => ({ week, days: days.size })).sort((a, b) => a.week - b.week);
 
+  async function openDietPdf(week: number) {
+    const path = `${patientId}/dieta-semana-${week}.pdf`;
+    const { data } = await supabase.storage.from("patient-documents").createSignedUrl(path, 120);
+    if (data?.signedUrl) {
+      window.open(data.signedUrl, "_blank", "noopener");
+    } else {
+      toast.info("El PDF de esta semana aún no está en el expediente.", {
+        description: "Ábrela en «Dietas» y pulsa Guardar para generarlo.",
+      });
+    }
+  }
+
   return (
     <div className="rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-elevated)]">
       <p className="text-sm font-semibold text-foreground">Dietas del cliente</p>
       {isLoading ? null : weeks.length > 0 ? (
         <ul className="mt-3 space-y-1.5">
           {weeks.map((w) => (
-            <li key={w.week} className="flex items-center gap-3 rounded-xl bg-secondary/30 px-3 py-2">
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-soft text-foreground">
-                <NotebookPen className="h-4 w-4" />
-              </span>
-              <span className="flex-1 text-sm font-medium text-foreground">Semana {w.week}</span>
-              <span className="text-xs text-muted-foreground">
-                {w.days} {w.days === 1 ? "día" : "días"} con plan
-              </span>
+            <li key={w.week}>
+              <button
+                type="button"
+                onClick={() => openDietPdf(w.week)}
+                className="flex w-full items-center gap-3 rounded-xl bg-secondary/30 px-3 py-2 text-left transition hover:bg-secondary/60"
+              >
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary-soft text-foreground">
+                  <NotebookPen className="h-4 w-4" />
+                </span>
+                <span className="flex-1 text-sm font-medium text-foreground">Semana {w.week}</span>
+                <span className="text-xs text-muted-foreground">
+                  {w.days} {w.days === 1 ? "día" : "días"} con plan
+                </span>
+                <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
+              </button>
             </li>
           ))}
         </ul>
