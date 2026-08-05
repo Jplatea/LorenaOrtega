@@ -135,3 +135,16 @@ export function macrosPer100g(ings: { name: string; amount: string }[]): Macro {
 export function anyKnown(ings: { name: string; amount: string }[]): boolean {
   return ings.some((i) => lookupFood(i.name) && gramsOf(i.amount));
 }
+
+/** Un "alimento suelto" en la dieta se guarda como "Nombre (120 g)". Extrae
+ *  sus nutrientes si el nombre coincide con BEDCA. */
+export function macroForFoodEntry(content: string): Macro {
+  const first = String(content || "").split("\n")[0].trim();
+  const m = first.match(/^(.+?)\s*\((\d+(?:[.,]\d+)?)\s*g\)\s*$/i);
+  if (!m) return zeroMacro();
+  const grams = parseFloat(m[2].replace(",", "."));
+  const f = lookupFood(m[1].trim());
+  if (!f || !grams) return zeroMacro();
+  const k = grams / 100;
+  return { kcal: f.kcal * k, prot: f.prot * k, fat: f.fat * k, carb: f.carb * k, fiber: f.fiber * k };
+}

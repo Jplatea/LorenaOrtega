@@ -60,6 +60,7 @@ import BEDCA_FOODS from "@/data/bedca-foods.json";
 import {
   macrosForIngredients,
   macrosPer100g,
+  macroForFoodEntry,
   anyKnown,
   addMacro,
   zeroMacro,
@@ -2340,6 +2341,9 @@ function VisualDietBoard({
   const [customFor, setCustomFor] = useState<string | null>(null);
   const [cName, setCName] = useState("");
   const [cDesc, setCDesc] = useState("");
+  const [foodFor, setFoodFor] = useState<string | null>(null);
+  const [fName, setFName] = useState("");
+  const [fGrams, setFGrams] = useState("");
   const q = search.trim().toLowerCase();
   const palette = recipes.filter(
     (r) => (!activeMeal || r.meal === activeMeal) && (!q || r.title.toLowerCase().includes(q)),
@@ -2393,6 +2397,21 @@ function VisualDietBoard({
     setCDesc("");
     setCustomFor(null);
   };
+  const addFoodItem = (mealId: string) => {
+    const name = fName.trim();
+    const grams = fGrams.trim();
+    if (!name || !grams) return;
+    const content = `${name} (${grams} g)`;
+    const key = `${activeDay}-${mealId}`;
+    update(key, (v) => {
+      const empty = v.options.length === 1 && !v.options[0].recipeId && !v.options[0].content.trim();
+      if (empty) return { options: [{ recipeId: "", content }], joiners: [] };
+      return { options: [...v.options, { recipeId: "", content }], joiners: [...v.joiners, "y"] };
+    });
+    setFName("");
+    setFGrams("");
+    setFoodFor(null);
+  };
   const moveFood = (mealId: string, idx: number, dir: -1 | 1) => {
     const key = `${activeDay}-${mealId}`;
     update(key, (v) => {
@@ -2406,6 +2425,12 @@ function VisualDietBoard({
 
   return (
     <div className="grid gap-4 lg:grid-cols-[290px_1fr]">
+      {/* Lista de alimentos BEDCA para el autocompletado de alimentos sueltos */}
+      <datalist id="bedca-diet-foods">
+        {BEDCA_FOODS.map((f) => (
+          <option key={f} value={f} />
+        ))}
+      </datalist>
       {/* Paleta de recetas (arrastrables) */}
       <div className="space-y-3">
         <Input
@@ -2565,7 +2590,47 @@ function VisualDietBoard({
                 </ul>
               )}
 
-              {customFor === m.id ? (
+              {foodFor === m.id ? (
+                <div className="mt-2 space-y-1.5 rounded-xl bg-secondary/40 p-2">
+                  <Input
+                    value={fName}
+                    onChange={(e) => setFName(e.target.value)}
+                    placeholder="Alimento (busca en BEDCA)…"
+                    list="bedca-diet-foods"
+                    autoComplete="off"
+                    autoFocus
+                    className="h-8 bg-card text-sm shadow-[var(--shadow-soft)]"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      value={fGrams}
+                      onChange={(e) => setFGrams(e.target.value)}
+                      placeholder="120"
+                      inputMode="numeric"
+                      className="h-8 w-16 bg-card text-sm shadow-[var(--shadow-soft)]"
+                    />
+                    <span className="text-xs text-muted-foreground">g</span>
+                    <div className="ml-auto flex gap-1.5">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7"
+                        onClick={() => {
+                          setFoodFor(null);
+                          setFName("");
+                          setFGrams("");
+                        }}
+                      >
+                        Cancelar
+                      </Button>
+                      <Button type="button" size="sm" className="h-7" onClick={() => addFoodItem(m.id)}>
+                        Añadir
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : customFor === m.id ? (
                 <div className="mt-2 space-y-1.5 rounded-xl bg-secondary/40 p-2">
                   <Input
                     value={cName}
@@ -2600,17 +2665,30 @@ function VisualDietBoard({
                   </div>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCustomFor(m.id);
-                    setCName("");
-                    setCDesc("");
-                  }}
-                  className="mt-2 flex w-full items-center justify-center gap-1 rounded-xl border border-dashed border-border py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
-                >
-                  <Plus className="h-3.5 w-3.5" /> Producto a medida
-                </button>
+                <div className="mt-2 flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFoodFor(m.id);
+                      setFName("");
+                      setFGrams("");
+                    }}
+                    className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-dashed border-border py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Alimento
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomFor(m.id);
+                      setCName("");
+                      setCDesc("");
+                    }}
+                    className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-dashed border-border py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> A medida
+                  </button>
+                </div>
               )}
 
               {fullscreen && (macrosByMeal[m.id]?.kcal ?? 0) > 0 && (
@@ -2760,6 +2838,7 @@ function DietEditor({
     for (const opt of getCell(`${activeDay}-${m.id}`).options) {
       const rec = recipes?.find((r) => r.id === opt.recipeId);
       if (rec) acc = addMacro(acc, macrosForIngredients(rec.ingredients));
+      else if (opt.content.trim()) acc = addMacro(acc, macroForFoodEntry(opt.content));
     }
     macrosByMeal[m.id] = acc;
   }
