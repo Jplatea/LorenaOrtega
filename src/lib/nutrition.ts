@@ -143,7 +143,7 @@ export function anyKnown(ings: { name: string; amount: string }[]): boolean {
  *  sus nutrientes si el nombre coincide con BEDCA. */
 export function macroForFoodEntry(content: string): Macro {
   const first = String(content || "").split("\n")[0].trim();
-  const m = first.match(/^(.+?)\s*\((\d+(?:[.,]\d+)?)\s*g\)\s*$/i);
+  const m = first.match(/^(.+?)\s*\((\d+(?:[.,]\d+)?)\s*(?:g|gr|ml)\)\s*$/i);
   if (!m) return zeroMacro();
   const grams = parseFloat(m[2].replace(",", "."));
   const f = lookupFood(m[1].trim());
@@ -202,7 +202,7 @@ export function microsForIngredients(ings: { name: string; amount: string }[]): 
 }
 export function microsForFoodEntry(content: string): Micros {
   const first = String(content || "").split("\n")[0].trim();
-  const mm = first.match(/^(.+?)\s*\((\d+(?:[.,]\d+)?)\s*g\)\s*$/i);
+  const mm = first.match(/^(.+?)\s*\((\d+(?:[.,]\d+)?)\s*(?:g|gr|ml)\)\s*$/i);
   if (!mm) return zeroMicros();
   const grams = parseFloat(mm[2].replace(",", "."));
   const m = microIndex.lookup(mm[1].trim());

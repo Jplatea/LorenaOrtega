@@ -3430,6 +3430,7 @@ function VisualDietBoard({
   const [foodFor, setFoodFor] = useState<string | null>(null);
   const [fName, setFName] = useState("");
   const [fGrams, setFGrams] = useState("");
+  const [fUnit, setFUnit] = useState("gr");
   const q = search.trim().toLowerCase();
   const palette = recipes.filter(
     (r) => (!activeMeal || r.meal === activeMeal) && (!q || r.title.toLowerCase().includes(q)),
@@ -3522,7 +3523,7 @@ function VisualDietBoard({
     const name = fName.trim();
     const grams = fGrams.trim();
     if (!name || !grams) return;
-    const content = `${name} (${grams} g)`;
+    const content = `${name} (${grams} ${fUnit})`;
     const key = `${activeDay}-${mealId}`;
     update(key, (v) => {
       const empty = v.options.length === 1 && !v.options[0].recipeId && !v.options[0].content.trim();
@@ -3762,7 +3763,16 @@ function VisualDietBoard({
                       inputMode="numeric"
                       className="h-8 w-16 bg-card text-sm shadow-[var(--shadow-soft)]"
                     />
-                    <span className="text-xs text-muted-foreground">g</span>
+                    <Select value={fUnit} onValueChange={setFUnit}>
+                      <SelectTrigger className="h-8 w-16 bg-card text-sm shadow-[var(--shadow-soft)]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="gr">gr</SelectItem>
+                        <SelectItem value="ml">ml</SelectItem>
+                        <SelectItem value="ud">ud</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <div className="ml-auto flex gap-1.5">
                       <Button
                         type="button"
