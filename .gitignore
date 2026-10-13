@@ -36,3 +36,6 @@ dist-ssr
 
 # Lanzador local del servidor de desarrollo (ruta absoluta específica de la máquina)
 dev.cmd
+
+.vercel
+.env*
