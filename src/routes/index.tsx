@@ -2526,8 +2526,8 @@ const productMacro = (p: ProductItem): Macro => ({ kcal: p.kcal ?? 0, prot: p.pr
 
 function ProductTile({ p, onEdit, onDelete }: { p: ProductItem; onEdit: () => void; onDelete: () => void }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-elevated)] transition hover:shadow-[var(--shadow-float)]">
-      <div className="relative h-24 w-full bg-secondary/40">
+    <div className="overflow-hidden rounded-2xl border shadow-[var(--shadow-elevated)] transition hover:shadow-[var(--shadow-float)]" style={{ background: "#FFFFFF", borderColor: "#ECE3F6" }}>
+      <div className="relative h-24 w-full" style={{ background: "#F7F3FC" }}>
         {p.image_url ? (
           <img src={p.image_url} alt="" loading="lazy" className="h-full w-full object-contain p-1" />
         ) : (
@@ -2557,8 +2557,8 @@ function ProductTile({ p, onEdit, onDelete }: { p: ProductItem; onEdit: () => vo
 
 function ProductRow({ p, onEdit, onDelete }: { p: ProductItem; onEdit: () => void; onDelete: () => void }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-2 shadow-[var(--shadow-soft)] transition hover:shadow-[var(--shadow-elevated)]">
-      <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-secondary/40">
+    <div className="flex items-center gap-3 rounded-xl border px-3 py-2 shadow-[var(--shadow-soft)] transition hover:shadow-[var(--shadow-elevated)]" style={{ background: "#FFFFFF", borderColor: "#ECE3F6" }}>
+      <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-lg" style={{ background: "#F7F3FC" }}>
         {p.image_url ? <img src={p.image_url} alt="" loading="lazy" className="h-full w-full object-contain p-0.5" /> : <Package className="h-4 w-4 text-muted-foreground/50" />}
       </span>
       <div className="min-w-0 flex-1">
