@@ -4895,38 +4895,69 @@ function DietEditor({
 
   return (
     <div className={fullscreen ? "flex h-full min-h-0 flex-col space-y-2" : "space-y-4"}>
-      {/* Línea estándar: volver + PDF + Guardar + X (igual que el resto de secciones) */}
-      <PanelToolbar info={patientName} onBack={onBack} onClose={onClose}>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={emailDiet}
-          disabled={mailSending}
-          className="shrink-0"
-          title="Avisar al cliente por correo de que su dieta ya está disponible"
-        >
-          {mailSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Mail
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={downloadPdf}
-          disabled={pdfLoading}
-          className="shrink-0"
-          title="Abrir el PDF de la dieta en otra pestaña (desde ahí se descarga)"
-        >
-          {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} PDF
-        </Button>
-        <Button size="sm" onClick={save} disabled={saving} className="shrink-0">
-          {saving ? (
-            <LoadingBar />
-          ) : (
-            <>
-              <Save className="h-4 w-4" /> Guardar
-            </>
+      {/* Fila superior (todo a la misma altura): volver + nombre sobre la paleta ·
+          Semana + días alineados con la primera comida · acciones a la derecha
+          del tamaño de los días (Mail · PDF · Guardar) + cerrar. */}
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 sm:w-[290px] sm:shrink-0">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="Volver"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground"
+            >
+              <ChevronRight className="h-4 w-4 rotate-180" />
+            </button>
           )}
-        </Button>
-      </PanelToolbar>
+          <span className="truncate text-xs text-muted-foreground">{patientName}</span>
+        </div>
+
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          {semanaControl}
+          <div className="max-w-full overflow-x-auto">{days}</div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={emailDiet}
+            disabled={mailSending}
+            title="Avisar al cliente por correo de que su dieta ya está disponible"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-[var(--shadow-elevated)] transition hover:opacity-90 disabled:opacity-60"
+          >
+            {mailSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />} Mail
+          </button>
+          <button
+            type="button"
+            onClick={downloadPdf}
+            disabled={pdfLoading}
+            title="Abrir el PDF de la dieta en otra pestaña (desde ahí se descarga)"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-[var(--shadow-elevated)] transition hover:opacity-90 disabled:opacity-60"
+          >
+            {pdfLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} PDF
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            title="Guardar la dieta"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-[var(--shadow-soft)] transition hover:opacity-90 disabled:opacity-60"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Guardar
+          </button>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Cerrar"
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
 
       {(recipes?.length ?? 0) === 0 && (
         <div className="rounded-2xl bg-secondary/50 p-4 text-sm text-foreground">
@@ -4956,7 +4987,7 @@ function DietEditor({
         </div>
       )}
 
-      {/* Buscador de recetas (izq, alineado sobre la columna) + Semana + días + análisis */}
+      {/* Buscador de recetas (sobre la paleta) + análisis del día (sobre el contenido) */}
       <div className="flex flex-wrap items-center gap-3">
         <Input
           value={paletteSearch}
@@ -4964,11 +4995,8 @@ function DietEditor({
           placeholder="Buscar receta…"
           className="h-9 w-full bg-card shadow-[var(--shadow-soft)] sm:w-[290px] sm:shrink-0"
         />
-        <div className="flex flex-1 flex-wrap items-center justify-center gap-2">
-          {semanaControl}
-          <div className="max-w-full overflow-x-auto">{days}</div>
-        </div>
-        <div className="shrink-0">{analysis}</div>
+        <div className="min-w-0 flex-1" />
+        {analysis && <div className="shrink-0">{analysis}</div>}
       </div>
 
       {isLoading ? (
