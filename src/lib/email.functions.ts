@@ -2,10 +2,9 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-// Remitente de toda la comunicación de Lorena con sus clientes.
-const FROM = "Lorena Ortega <hola@lorenaortega.es>";
-const REPLY_TO = "hola@lorenaortega.es";
-
+// Toda la comunicación de Lorena con sus clientes sale de su propio buzón de
+// IONOS (hola@lorenaortega.es) por SMTP: sin terceros, y las respuestas de los
+// clientes llegan a esa misma bandeja.
 async function assertAdmin(supabase: any, userId: string) {
   const { data, error } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
   if (error) throw new Error("No autorizado");
@@ -19,9 +18,8 @@ function escapeHtml(s: string) {
 }
 
 // Plantilla limpia y minimalista con la identidad de Lorena (crema + verde,
-// Poppins). El cuerpo es el texto que escribe Lorena, respetando sus saltos
-// de línea. Maquetación con tablas e inline styles para que renderice bien
-// en todos los clientes de correo.
+// Poppins). El cuerpo es el texto que escribe Lorena, respetando sus saltos de
+// línea. Tablas e inline styles para que renderice bien en todos los clientes.
 function renderEmail({ subject, message }: { subject: string; message: string }) {
   const body = escapeHtml(message).replace(/\r?\n/g, "<br>");
   const INK = "#2f3b34", SOFT = "#7c8a82", GREEN = "#5FB98E", CREAM = "#f6f4ef", LINE = "#e7e3da";
@@ -66,23 +64,35 @@ export const sendClientEmail = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => schema.parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
-    const key = process.env.RESEND_API_KEY;
-    if (!key) throw new Error("El correo no está configurado todavía (falta la API key de Resend).");
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from: FROM,
-        to: [data.to],
-        reply_to: REPLY_TO,
-        subject: data.subject,
-        html: renderEmail({ subject: data.subject, message: data.message }),
-      }),
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      throw new Error("No se pudo enviar el correo. " + detail.slice(0, 200));
+
+    const host = process.env.SMTP_HOST || "smtp.ionos.es";
+    const port = Number(process.env.SMTP_PORT || 587);
+    const user = process.env.SMTP_USER; // p. ej. hola@lorenaortega.es
+    const pass = process.env.SMTP_PASS;
+    const fromName = process.env.SMTP_FROM_NAME || "Lorena Ortega";
+    if (!user || !pass) {
+      throw new Error("El correo no está configurado todavía (faltan las credenciales SMTP de IONOS).");
     }
-    const j = await res.json().catch(() => ({}));
-    return { ok: true, id: j.id as string | undefined };
+
+    const { default: nodemailer } = await import("nodemailer");
+    const transport = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465, // 465 = SSL; 587 = STARTTLS
+      auth: { user, pass },
+    });
+
+    try {
+      const info = await transport.sendMail({
+        from: `${fromName} <${user}>`,
+        to: data.to,
+        replyTo: user,
+        subject: data.subject,
+        text: data.message,
+        html: renderEmail({ subject: data.subject, message: data.message }),
+      });
+      return { ok: true, id: info.messageId as string | undefined };
+    } catch (e: any) {
+      throw new Error("No se pudo enviar el correo: " + (e?.message ?? "error SMTP"));
+    }
   });
