@@ -64,7 +64,7 @@ import { MEALS, DAYS } from "@/lib/domain";
 import { ensureIngredients, renderIngredients } from "@/lib/recipes";
 import { parseMeal, serializeMeal, renderMeal, type MealValue } from "@/lib/meal-options";
 import { useCurrentUser } from "@/lib/auth-hooks";
-import { buildDietPdf, buildDietPdfBlob, type DietRow, type DayNutrition } from "@/lib/pdf-export";
+import { buildDietPdfBlob, type DietRow, type DayNutrition } from "@/lib/pdf-export";
 import BEDCA_FOODS from "@/data/bedca-foods.json";
 import {
   macrosForIngredients,
@@ -4729,15 +4729,28 @@ function DietEditor({
 
   const [pdfLoading, setPdfLoading] = useState(false);
   async function downloadPdf() {
+    const payload = buildPdfPayload();
+    if (!payload) {
+      toast.error("La dieta está vacía", { description: "Añade alguna comida antes de abrir el PDF." });
+      return;
+    }
+    // Abrimos la pestaña dentro del propio clic (si esperamos al PDF, el
+    // navegador la bloquearía por no ser un gesto del usuario).
+    const win = window.open("", "_blank");
     setPdfLoading(true);
     try {
-      const payload = buildPdfPayload();
-      if (!payload) {
-        toast.error("La dieta está vacía", { description: "Añade alguna comida antes de descargar." });
-        return;
-      }
-      await buildDietPdf({ patientName, weekNumber: week, rows: payload.rows, dayNutrition: payload.dayNutrition });
+      const { blob } = await buildDietPdfBlob({
+        patientName,
+        weekNumber: week,
+        rows: payload.rows,
+        dayNutrition: payload.dayNutrition,
+      });
+      const url = URL.createObjectURL(blob);
+      if (win) win.location.href = url;
+      else window.open(url, "_blank"); // por si el navegador no permitió abrir la pestaña vacía
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch {
+      if (win) win.close();
       toast.error("No se pudo generar el PDF");
     } finally {
       setPdfLoading(false);
@@ -4862,7 +4875,7 @@ function DietEditor({
           onClick={downloadPdf}
           disabled={pdfLoading}
           className="shrink-0"
-          title="Descargar la dieta de este cliente en PDF"
+          title="Abrir el PDF de la dieta en otra pestaña (desde ahí se descarga)"
         >
           {pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} PDF
         </Button>
