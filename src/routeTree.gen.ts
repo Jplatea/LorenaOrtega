@@ -17,6 +17,7 @@ import { Route as CookiesRouteImport } from './routes/cookies'
 import { Route as PrivacidadRouteImport } from './routes/privacidad'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AuthenticatedAccountRouteImport } from './routes/_authenticated/account'
+import { Route as AuthenticatedAdminRouteRouteImport } from './routes/_authenticated/admin/route'
 import { Route as AuthenticatedChangePasswordRouteImport } from './routes/_authenticated/change-password'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
@@ -68,6 +69,11 @@ const AuthenticatedAccountRoute = AuthenticatedAccountRouteImport.update({
   path: '/account',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAdminRouteRoute = AuthenticatedAdminRouteRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedChangePasswordRoute =
   AuthenticatedChangePasswordRouteImport.update({
     id: '/change-password',
@@ -80,21 +86,21 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
-  id: '/admin/',
-  path: '/admin/',
-  getParentRoute: () => AuthenticatedRouteRoute,
+  id: '/',
+  path: '/',
+  getParentRoute: () => AuthenticatedAdminRouteRoute,
 } as any)
 const AuthenticatedAdminProductsRoute =
   AuthenticatedAdminProductsRouteImport.update({
-    id: '/admin/products',
-    path: '/admin/products',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/products',
+    path: '/products',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedAdminRecipesRoute =
   AuthenticatedAdminRecipesRouteImport.update({
-    id: '/admin/recipes',
-    path: '/admin/recipes',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/recipes',
+    path: '/recipes',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedPatientIndexRoute =
   AuthenticatedPatientIndexRouteImport.update({
@@ -110,21 +116,21 @@ const AuthenticatedPatientLibraryRoute =
   } as any)
 const AuthenticatedAdminPatientsIndexRoute =
   AuthenticatedAdminPatientsIndexRouteImport.update({
-    id: '/admin/patients/',
-    path: '/admin/patients/',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/patients/',
+    path: '/patients/',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedAdminPatientsIdRoute =
   AuthenticatedAdminPatientsIdRouteImport.update({
-    id: '/admin/patients/$id',
-    path: '/admin/patients/$id',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/patients/$id',
+    path: '/patients/$id',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedAdminPatientsNewRoute =
   AuthenticatedAdminPatientsNewRouteImport.update({
-    id: '/admin/patients/new',
-    path: '/admin/patients/new',
-    getParentRoute: () => AuthenticatedRouteRoute,
+    id: '/patients/new',
+    path: '/patients/new',
+    getParentRoute: () => AuthenticatedAdminRouteRoute,
   } as any)
 const AuthenticatedPatientDayDayRoute =
   AuthenticatedPatientDayDayRouteImport.update({
@@ -140,6 +146,7 @@ export interface FileRoutesByFullPath {
   '/cookies': typeof CookiesRoute
   '/privacidad': typeof PrivacidadRoute
   '/setup': typeof SetupRoute
+  '/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/account': typeof AuthenticatedAccountRoute
   '/change-password': typeof AuthenticatedChangePasswordRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -182,6 +189,7 @@ export interface FileRoutesById {
   '/cookies': typeof CookiesRoute
   '/privacidad': typeof PrivacidadRoute
   '/setup': typeof SetupRoute
+  '/_authenticated/admin': typeof AuthenticatedAdminRouteRouteWithChildren
   '/_authenticated/account': typeof AuthenticatedAccountRoute
   '/_authenticated/change-password': typeof AuthenticatedChangePasswordRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -204,6 +212,7 @@ export interface FileRouteTypes {
     | '/cookies'
     | '/privacidad'
     | '/setup'
+    | '/admin'
     | '/account'
     | '/change-password'
     | '/dashboard'
@@ -245,6 +254,7 @@ export interface FileRouteTypes {
     | '/cookies'
     | '/privacidad'
     | '/setup'
+    | '/_authenticated/admin'
     | '/_authenticated/account'
     | '/_authenticated/change-password'
     | '/_authenticated/dashboard'
@@ -327,6 +337,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAccountRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin': {
+      id: '/_authenticated/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AuthenticatedAdminRouteRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/change-password': {
       id: '/_authenticated/change-password'
       path: '/change-password'
@@ -343,24 +360,24 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/admin/': {
       id: '/_authenticated/admin/'
-      path: '/admin'
+      path: '/'
       fullPath: '/admin/'
       preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/products': {
       id: '/_authenticated/admin/products'
-      path: '/admin/products'
+      path: '/products'
       fullPath: '/admin/products'
       preLoaderRoute: typeof AuthenticatedAdminProductsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/recipes': {
       id: '/_authenticated/admin/recipes'
-      path: '/admin/recipes'
+      path: '/recipes'
       fullPath: '/admin/recipes'
       preLoaderRoute: typeof AuthenticatedAdminRecipesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/patient/': {
       id: '/_authenticated/patient/'
@@ -378,24 +395,24 @@ declare module '@tanstack/react-router' {
     }
     '/_authenticated/admin/patients/': {
       id: '/_authenticated/admin/patients/'
-      path: '/admin/patients'
+      path: '/patients'
       fullPath: '/admin/patients/'
       preLoaderRoute: typeof AuthenticatedAdminPatientsIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/patients/$id': {
       id: '/_authenticated/admin/patients/$id'
-      path: '/admin/patients/$id'
+      path: '/patients/$id'
       fullPath: '/admin/patients/$id'
       preLoaderRoute: typeof AuthenticatedAdminPatientsIdRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/admin/patients/new': {
       id: '/_authenticated/admin/patients/new'
-      path: '/admin/patients/new'
+      path: '/patients/new'
       fullPath: '/admin/patients/new'
       preLoaderRoute: typeof AuthenticatedAdminPatientsNewRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
+      parentRoute: typeof AuthenticatedAdminRouteRoute
     }
     '/_authenticated/patient/day/$day': {
       id: '/_authenticated/patient/day/$day'
@@ -407,34 +424,48 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface AuthenticatedRouteRouteChildren {
-  AuthenticatedAccountRoute: typeof AuthenticatedAccountRoute
-  AuthenticatedChangePasswordRoute: typeof AuthenticatedChangePasswordRoute
-  AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+interface AuthenticatedAdminRouteRouteChildren {
   AuthenticatedAdminProductsRoute: typeof AuthenticatedAdminProductsRoute
   AuthenticatedAdminRecipesRoute: typeof AuthenticatedAdminRecipesRoute
-  AuthenticatedPatientLibraryRoute: typeof AuthenticatedPatientLibraryRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
-  AuthenticatedPatientIndexRoute: typeof AuthenticatedPatientIndexRoute
   AuthenticatedAdminPatientsIdRoute: typeof AuthenticatedAdminPatientsIdRoute
   AuthenticatedAdminPatientsNewRoute: typeof AuthenticatedAdminPatientsNewRoute
-  AuthenticatedPatientDayDayRoute: typeof AuthenticatedPatientDayDayRoute
   AuthenticatedAdminPatientsIndexRoute: typeof AuthenticatedAdminPatientsIndexRoute
 }
 
+const AuthenticatedAdminRouteRouteChildren: AuthenticatedAdminRouteRouteChildren =
+  {
+    AuthenticatedAdminProductsRoute: AuthenticatedAdminProductsRoute,
+    AuthenticatedAdminRecipesRoute: AuthenticatedAdminRecipesRoute,
+    AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
+    AuthenticatedAdminPatientsIdRoute: AuthenticatedAdminPatientsIdRoute,
+    AuthenticatedAdminPatientsNewRoute: AuthenticatedAdminPatientsNewRoute,
+    AuthenticatedAdminPatientsIndexRoute: AuthenticatedAdminPatientsIndexRoute,
+  }
+
+const AuthenticatedAdminRouteRouteWithChildren =
+  AuthenticatedAdminRouteRoute._addFileChildren(
+    AuthenticatedAdminRouteRouteChildren,
+  )
+
+interface AuthenticatedRouteRouteChildren {
+  AuthenticatedAdminRouteRoute: typeof AuthenticatedAdminRouteRouteWithChildren
+  AuthenticatedAccountRoute: typeof AuthenticatedAccountRoute
+  AuthenticatedChangePasswordRoute: typeof AuthenticatedChangePasswordRoute
+  AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedPatientLibraryRoute: typeof AuthenticatedPatientLibraryRoute
+  AuthenticatedPatientIndexRoute: typeof AuthenticatedPatientIndexRoute
+  AuthenticatedPatientDayDayRoute: typeof AuthenticatedPatientDayDayRoute
+}
+
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
+  AuthenticatedAdminRouteRoute: AuthenticatedAdminRouteRouteWithChildren,
   AuthenticatedAccountRoute: AuthenticatedAccountRoute,
   AuthenticatedChangePasswordRoute: AuthenticatedChangePasswordRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
-  AuthenticatedAdminProductsRoute: AuthenticatedAdminProductsRoute,
-  AuthenticatedAdminRecipesRoute: AuthenticatedAdminRecipesRoute,
   AuthenticatedPatientLibraryRoute: AuthenticatedPatientLibraryRoute,
-  AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
   AuthenticatedPatientIndexRoute: AuthenticatedPatientIndexRoute,
-  AuthenticatedAdminPatientsIdRoute: AuthenticatedAdminPatientsIdRoute,
-  AuthenticatedAdminPatientsNewRoute: AuthenticatedAdminPatientsNewRoute,
   AuthenticatedPatientDayDayRoute: AuthenticatedPatientDayDayRoute,
-  AuthenticatedAdminPatientsIndexRoute: AuthenticatedAdminPatientsIndexRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

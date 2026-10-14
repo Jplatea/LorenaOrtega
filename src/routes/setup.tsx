@@ -42,7 +42,7 @@ function SetupPage() {
       });
       if (error) throw error;
       toast.success("Administrador creado");
-      navigate({ to: "/admin", replace: true });
+      navigate({ to: "/", replace: true });
     } catch (err: any) {
       toast.error("No se pudo completar la configuración", { description: err?.message });
     } finally {
