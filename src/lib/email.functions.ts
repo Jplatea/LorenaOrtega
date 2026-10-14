@@ -7,6 +7,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 // clientes llegan a esa misma bandeja.
 const CLIENT_WEB = "https://www.lorenaortega.es";
 const CHIRIMOYA_IMG = `${CLIENT_WEB}/images/email/chirimoya.jpg`;
+const FIRMA_IMG = `${CLIENT_WEB}/images/email/firma.jpg`;
 
 async function assertAdmin(supabase: any, userId: string) {
   const { data, error } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
@@ -47,7 +48,7 @@ function renderEmail({ subject, message }: { subject: string; message: string })
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;">
     <tr><td style="padding:0 4px 18px;"><span style="font-size:17px;font-weight:500;color:${INK};letter-spacing:0.2px;">Lorena Ortega<span style="color:${GREEN};"> ·</span> <span style="font-weight:300;color:${SOFT};">Dietética</span></span></td></tr>
     <tr><td style="background:#ffffff;border:1px solid ${LINE};border-radius:18px;padding:30px 30px 26px;"><div style="font-size:15px;line-height:1.75;font-weight:300;color:${INK};">${body}</div></td></tr>
-    <tr><td style="padding:18px 8px 0;text-align:center;"><p style="margin:0;font-size:11px;color:${SOFT};">Lorena Ortega · Dietética · hola@lorenaortega.es</p></td></tr>
+    <tr><td style="padding:22px 0 0;text-align:center;"><img src="${FIRMA_IMG}" width="560" alt="Lorena Ortega · Nutrición · Salud · Bienestar · 658 894 356 · lorena@lorenaortega.es · @lorenaortega · Málaga y online" style="width:100%;max-width:560px;height:auto;display:block;border:0;outline:none;border-radius:14px;" /></td></tr>
   </table>
 </body></html>`;
 }
@@ -125,7 +126,7 @@ function renderDietCard({ name }: { name: string }) {
       </table>
       <!--<![endif]-->
       <table role="presentation" class="wrap" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;">
-        <tr><td align="center" style="padding:18px 20px 0;font-size:10px;line-height:17px;color:#7c8a82;">Lorena Ortega · Dietética · hola@lorenaortega.es</td></tr>
+        <tr><td align="center" style="padding:22px 0 0;"><img src="${FIRMA_IMG}" width="600" alt="Lorena Ortega · Nutrición · Salud · Bienestar · 658 894 356 · lorena@lorenaortega.es · @lorenaortega · Málaga y online" style="width:100%;max-width:600px;height:auto;display:block;border:0;outline:none;border-radius:14px;" /></td></tr>
       </table>
     </td></tr>
   </table>
