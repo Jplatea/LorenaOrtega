@@ -43,6 +43,7 @@ import {
   User,
   LayoutGrid,
   List,
+  Package,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -859,6 +860,7 @@ const DASH_CARDS: DashCard[] = [
   { label: "Clientes", desc: "Tus pacientes y sus fichas.", icon: Users, bg: "linear-gradient(150deg, #D3E2D1, #E7F0E6)" },
   { label: "Dietas", desc: "Planes semanales por paciente.", icon: NotebookPen, bg: "linear-gradient(150deg, #E6E4E1, #F1EFEC)" },
   { label: "Recetas", desc: "Recetario por tipo de comida.", icon: BookOpen, bg: "linear-gradient(150deg, #FBD3AC, #FEE8D2)" },
+  { label: "Productos", desc: "Alimentos e ingredientes para recetas.", icon: Package, bg: "linear-gradient(150deg, #E7D9F0, #F3EBF9)" },
   { label: "Recursos", desc: "Guías y materiales de apoyo.", icon: Activity, bg: "linear-gradient(150deg, #C6D3D8, #E4ECEF)" },
   { label: "Solicitudes", desc: "Reservas y mensajes recibidos.", icon: Inbox, bg: "linear-gradient(150deg, #F7C6C1, #FCE3E0)" },
 ];
@@ -1122,10 +1124,11 @@ function SolicitudesPanel({ fullscreen, onClose }: { fullscreen: boolean; onClos
   );
 }
 
-type PeekTable = "profiles" | "recipes" | "diets" | "resources" | "leads";
+type PeekTable = "profiles" | "recipes" | "diets" | "resources" | "leads" | "products";
 const PEEK_TABLE: Record<string, PeekTable> = {
   Clientes: "profiles",
   Recetas: "recipes",
+  Productos: "products",
   Dietas: "diets",
   Recursos: "resources",
   Solicitudes: "leads",
@@ -1148,6 +1151,7 @@ const PEEK_COLUMNS: Record<PeekTable, string[]> = {
     "is_active",
   ],
   recipes: ["meal", "title", "content", "ingredients"],
+  products: ["kind", "name", "brand", "category", "kcal", "prot", "fat", "carb", "nutri_score"],
   diets: ["week_number", "day_of_week", "meal", "content"],
   resources: ["kind", "title", "url", "mime_type", "size_bytes"],
   leads: ["name", "email", "phone", "message", "source", "handled", "created_at"],
@@ -1179,6 +1183,14 @@ const COLUMN_LABELS: Record<string, string> = {
   source: "Origen",
   handled: "Atendido",
   created_at: "Fecha",
+  name: "Nombre",
+  brand: "Marca",
+  category: "Categoría",
+  kcal: "Energía",
+  prot: "Proteína",
+  fat: "Grasa",
+  carb: "H. Carbono",
+  nutri_score: "Nutri-Score",
 };
 
 function AuthedArea({
@@ -2099,6 +2111,8 @@ function ExpandedCard({
           <ClientesPanel fullscreen={fullscreen} onClose={onClose} />
         ) : card.label === "Recetas" ? (
           <RecetasPanel fullscreen={fullscreen} onClose={onClose} />
+        ) : card.label === "Productos" ? (
+          <ProductosPanel fullscreen={fullscreen} onClose={onClose} />
         ) : card.label === "Dietas" ? (
           <DietasPanel fullscreen={fullscreen} onClose={onClose} />
         ) : card.label === "Recursos" ? (
@@ -2397,6 +2411,328 @@ function RecipeCard({
             Sin datos nutricionales.
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------- Productos (alimentos BEDCA + marcas Open Food Facts) ----------------
+type ProductItem = {
+  id: string;
+  kind: "alimento" | "producto";
+  name: string;
+  brand: string | null;
+  barcode: string | null;
+  image_url: string | null;
+  category: string | null;
+  kcal: number | null; prot: number | null; fat: number | null; carb: number | null; fiber: number | null;
+  sat_fat: number | null; sugars: number | null; salt: number | null;
+  nutri_score: string | null;
+  source: string | null;
+};
+
+const NUTRI_COLORS: Record<string, string> = { a: "#038141", b: "#85BB2F", c: "#F7AE00", d: "#EE8100", e: "#E63E11" };
+function NutriBadge({ grade }: { grade: string }) {
+  const g = grade.toLowerCase();
+  return (
+    <span
+      className="inline-grid h-6 w-6 place-items-center rounded-md text-xs font-bold text-white shadow-[var(--shadow-soft)]"
+      style={{ background: NUTRI_COLORS[g] ?? "#999" }}
+      title={`Nutri-Score ${g.toUpperCase()}`}
+    >
+      {g.toUpperCase()}
+    </span>
+  );
+}
+const productMacro = (p: ProductItem): Macro => ({ kcal: p.kcal ?? 0, prot: p.prot ?? 0, fat: p.fat ?? 0, carb: p.carb ?? 0, fiber: p.fiber ?? 0 });
+
+function ProductTile({ p, onEdit, onDelete }: { p: ProductItem; onEdit: () => void; onDelete: () => void }) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-elevated)] transition hover:shadow-[var(--shadow-float)]">
+      <div className="relative h-24 w-full bg-secondary/40">
+        {p.image_url ? (
+          <img src={p.image_url} alt="" loading="lazy" className="h-full w-full object-contain p-1" />
+        ) : (
+          <div className="grid h-full place-items-center"><Package className="h-6 w-6 text-muted-foreground/40" /></div>
+        )}
+        <span className="absolute left-1.5 top-1.5 rounded-full bg-card/90 px-2 py-0.5 text-[10px] font-medium text-foreground shadow-[var(--shadow-soft)]">
+          {p.kind === "alimento" ? "Alimento" : "Marca"}
+        </span>
+        {p.nutri_score && <span className="absolute right-1.5 top-1.5"><NutriBadge grade={p.nutri_score} /></span>}
+        <div className="absolute bottom-1.5 right-1.5 flex gap-1">
+          {[{ icon: Pencil, fn: onEdit, label: "Editar" }, { icon: Trash2, fn: onDelete, label: "Eliminar" }].map(({ icon: Icon, fn, label }) => (
+            <button key={label} type="button" onClick={fn} aria-label={label}
+              className="grid h-7 w-7 place-items-center rounded-full bg-card/95 text-foreground shadow-[var(--shadow-soft)] transition hover:bg-primary hover:text-primary-foreground">
+              <Icon className="h-3.5 w-3.5" />
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-1 p-2.5">
+        <p className="truncate text-sm font-medium text-foreground" title={p.name}>{p.name}</p>
+        {p.brand && <p className="truncate text-[11px] text-muted-foreground">{p.brand}</p>}
+        <MacroTiles macro={productMacro(p)} note="por 100 g" />
+      </div>
+    </div>
+  );
+}
+
+function ProductRow({ p, onEdit, onDelete }: { p: ProductItem; onEdit: () => void; onDelete: () => void }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-2 shadow-[var(--shadow-soft)] transition hover:shadow-[var(--shadow-elevated)]">
+      <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-secondary/40">
+        {p.image_url ? <img src={p.image_url} alt="" loading="lazy" className="h-full w-full object-contain p-0.5" /> : <Package className="h-4 w-4 text-muted-foreground/50" />}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-foreground">{p.name}</p>
+        <p className="truncate text-[11px] text-muted-foreground">{p.brand || (p.kind === "alimento" ? "Alimento" : "Producto")}</p>
+      </div>
+      {p.nutri_score && <NutriBadge grade={p.nutri_score} />}
+      <div className="hidden shrink-0 items-center gap-2 text-[11px] sm:flex">
+        <span className="font-semibold" style={{ color: MACRO.kcal }}>{p.kcal != null ? Math.round(p.kcal) : "—"} kcal</span>
+        <span style={{ color: MACRO.fat }}>G {p.fat != null ? round1(p.fat) : "—"}</span>
+        <span style={{ color: MACRO.carb }}>HC {p.carb != null ? round1(p.carb) : "—"}</span>
+        <span style={{ color: MACRO.prot }}>P {p.prot != null ? round1(p.prot) : "—"}</span>
+      </div>
+      <div className="flex shrink-0 gap-1">
+        {[{ icon: Pencil, fn: onEdit, label: "Editar" }, { icon: Trash2, fn: onDelete, label: "Eliminar" }].map(({ icon: Icon, fn, label }) => (
+          <button key={label} type="button" onClick={fn} aria-label={label}
+            className="grid h-8 w-8 place-items-center rounded-lg border border-border text-foreground transition hover:bg-secondary/60">
+            <Icon className="h-3.5 w-3.5" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProductosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [search, setSearch] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const [kind, setKind] = useState<"all" | "alimento" | "producto">("all");
+  const [sortBy, setSortBy] = useState<"name" | "kcal">("name");
+  const [view, setView] = useState<"card" | "list">("card");
+  const [visible, setVisible] = useState(48);
+  const [editing, setEditing] = useState<"new" | ProductItem | null>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const { data: products, isLoading } = useQuery({
+    queryKey: ["productos-panel", kind, debounced],
+    queryFn: async () => {
+      let q = supabase
+        .from("products")
+        .select("id, kind, name, brand, barcode, image_url, category, kcal, prot, fat, carb, fiber, sat_fat, sugars, salt, nutri_score, source");
+      if (kind !== "all") q = q.eq("kind", kind);
+      const term = debounced.replace(/[%,()]/g, " ").trim();
+      if (term) q = q.or(`name.ilike.%${term}%,brand.ilike.%${term}%`);
+      const { data } = await q.order("name").limit(300);
+      return (data ?? []) as ProductItem[];
+    },
+  });
+
+  const { data: counts } = useQuery({
+    queryKey: ["productos-counts"],
+    queryFn: async () => {
+      const [t, a, m] = await Promise.all([
+        supabase.from("products").select("id", { count: "exact", head: true }),
+        supabase.from("products").select("id", { count: "exact", head: true }).eq("kind", "alimento"),
+        supabase.from("products").select("id", { count: "exact", head: true }).eq("kind", "producto"),
+      ]);
+      return { total: t.count ?? 0, a: a.count ?? 0, m: m.count ?? 0 };
+    },
+  });
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["productos-panel"] });
+    qc.invalidateQueries({ queryKey: ["productos-counts"] });
+  };
+
+  async function remove(p: ProductItem) {
+    const { error } = await supabase.from("products").delete().eq("id", p.id);
+    if (error) return toast.error("No se pudo eliminar", { description: error.message });
+    toast.success("Producto eliminado");
+    refresh();
+  }
+
+  if (editing) {
+    return (
+      <ProductEditor
+        product={editing === "new" ? null : editing}
+        fullscreen={fullscreen}
+        onBack={() => setEditing(null)}
+        onClose={onClose}
+        onSaved={() => { refresh(); setEditing(null); }}
+      />
+    );
+  }
+
+  const sorted = [...(products ?? [])].sort((a, b) =>
+    sortBy === "kcal" ? (b.kcal ?? 0) - (a.kcal ?? 0) || a.name.localeCompare(b.name, "es") : a.name.localeCompare(b.name, "es"),
+  );
+  const shown = sorted.slice(0, visible);
+
+  return (
+    <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
+      <PanelToolbar
+        info={`${counts?.total ?? 0} · ${counts?.a ?? 0} alimentos · ${counts?.m ?? 0} marca`}
+        search={search}
+        setSearch={(v) => { setSearch(v); setVisible(48); }}
+        searchPlaceholder="Buscar producto o marca…"
+        onClose={onClose}
+      >
+        <Select value={sortBy} onValueChange={(v) => setSortBy(v as "name" | "kcal")}>
+          <SelectTrigger className="h-9 w-[128px] shrink-0 bg-card shadow-[var(--shadow-soft)]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="name">Por nombre</SelectItem>
+            <SelectItem value="kcal">Por calorías</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="flex shrink-0 overflow-hidden rounded-full border border-border bg-card shadow-[var(--shadow-soft)]">
+          {([["card", LayoutGrid], ["list", List]] as const).map(([v, Icon]) => (
+            <button key={v} type="button" onClick={() => setView(v)} aria-label={v === "card" ? "Vista tarjeta" : "Vista listado"}
+              className={cn("grid h-9 w-9 place-items-center", view === v ? "bg-primary text-primary-foreground" : "text-muted-foreground")}>
+              <Icon className="h-4 w-4" />
+            </button>
+          ))}
+        </div>
+        <Button type="button" size="sm" onClick={() => setEditing("new")} className="h-9 shrink-0"><Plus className="h-4 w-4" /> Nuevo</Button>
+      </PanelToolbar>
+
+      <div className="flex flex-wrap gap-1.5">
+        {([["all", "Todos"], ["alimento", "Alimentos"], ["producto", "Productos de marca"]] as const).map(([k, lbl]) => (
+          <button key={k} type="button" onClick={() => { setKind(k); setVisible(48); }}
+            className={cn("rounded-full border px-3 py-1 text-xs transition", kind === k ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground")}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      <div className={cn(fullscreen && "min-h-0 flex-1 overflow-y-auto pr-1")}>
+        {isLoading ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
+        ) : sorted.length === 0 ? (
+          <p className="py-10 text-center text-sm italic text-muted-foreground">No hay productos que coincidan.</p>
+        ) : view === "card" ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {shown.map((p) => <ProductTile key={p.id} p={p} onEdit={() => setEditing(p)} onDelete={() => remove(p)} />)}
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {shown.map((p) => <ProductRow key={p.id} p={p} onEdit={() => setEditing(p)} onDelete={() => remove(p)} />)}
+          </div>
+        )}
+        {sorted.length > shown.length && (
+          <div className="pt-3 text-center">
+            <Button variant="outline" size="sm" onClick={() => setVisible((v) => v + 48)}>Mostrar más ({sorted.length - shown.length})</Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProductEditor({
+  product, fullscreen, onBack, onClose, onSaved,
+}: {
+  product: ProductItem | null;
+  fullscreen: boolean;
+  onBack: () => void;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [kind, setKind] = useState<"alimento" | "producto">(product?.kind ?? "producto");
+  const [name, setName] = useState(product?.name ?? "");
+  const [brand, setBrand] = useState(product?.brand ?? "");
+  const [barcode, setBarcode] = useState(product?.barcode ?? "");
+  const [imageUrl, setImageUrl] = useState(product?.image_url ?? "");
+  const [nutri, setNutri] = useState(product?.nutri_score ?? "");
+  const [f, setF] = useState({
+    kcal: product?.kcal?.toString() ?? "", prot: product?.prot?.toString() ?? "", carb: product?.carb?.toString() ?? "",
+    fat: product?.fat?.toString() ?? "", fiber: product?.fiber?.toString() ?? "",
+    sat_fat: product?.sat_fat?.toString() ?? "", sugars: product?.sugars?.toString() ?? "", salt: product?.salt?.toString() ?? "",
+  });
+  const [saving, setSaving] = useState(false);
+  const numOrNull = (s: string) => { const n = parseFloat(s.replace(",", ".")); return isFinite(n) ? n : null; };
+  const setField = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF((p) => ({ ...p, [k]: e.target.value }));
+
+  async function save() {
+    if (!name.trim()) return toast.error("El nombre es obligatorio");
+    setSaving(true);
+    const { data: u } = await supabase.auth.getUser();
+    const payload = {
+      kind, name: name.trim(), brand: brand.trim() || null, barcode: barcode.trim() || null,
+      image_url: imageUrl.trim() || null, nutri_score: nutri || null,
+      kcal: numOrNull(f.kcal), prot: numOrNull(f.prot), fat: numOrNull(f.fat), carb: numOrNull(f.carb), fiber: numOrNull(f.fiber),
+      sat_fat: numOrNull(f.sat_fat), sugars: numOrNull(f.sugars), salt: numOrNull(f.salt),
+    };
+    const res = product
+      ? await supabase.from("products").update(payload as never).eq("id", product.id)
+      : await supabase.from("products").insert({ ...payload, source: "manual", created_by: u.user?.id ?? null } as never);
+    setSaving(false);
+    if (res.error) return toast.error("No se pudo guardar", { description: res.error.message });
+    toast.success(product ? "Producto actualizado" : "Producto creado");
+    onSaved();
+  }
+
+  const numFields: { k: keyof typeof f; label: string; color?: string }[] = [
+    { k: "kcal", label: "Energía (kcal)", color: MACRO.kcal }, { k: "prot", label: "Proteína (g)", color: MACRO.prot },
+    { k: "carb", label: "H. Carbono (g)", color: MACRO.carb }, { k: "fat", label: "Grasa (g)", color: MACRO.fat },
+    { k: "fiber", label: "Fibra (g)" }, { k: "sat_fat", label: "Grasas sat. (g)" },
+    { k: "sugars", label: "Azúcares (g)" }, { k: "salt", label: "Sal (g)" },
+  ];
+
+  return (
+    <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
+      <PanelToolbar info={product ? "Editar producto" : "Nuevo producto"} onBack={onBack} onClose={onClose} />
+      <div className={cn("space-y-4", fullscreen && "min-h-0 flex-1 overflow-y-auto pr-1")}>
+        <div className="mx-auto max-w-2xl space-y-4 rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-elevated)]">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label>Tipo</Label>
+              <select value={kind} onChange={(e) => setKind(e.target.value as "alimento" | "producto")} className="h-10 w-full rounded-md border border-input bg-card px-2 text-sm">
+                <option value="producto">Producto de marca</option>
+                <option value="alimento">Alimento genérico</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label>Nutri-Score</Label>
+              <select value={nutri} onChange={(e) => setNutri(e.target.value)} className="h-10 w-full rounded-md border border-input bg-card px-2 text-sm">
+                <option value="">— (sin)</option>
+                {["a", "b", "c", "d", "e"].map((g) => <option key={g} value={g}>{g.toUpperCase()}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="space-y-1"><Label>Nombre</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej. Yogur natural" /></div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1"><Label>Marca</Label><Input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Ej. Hacendado" /></div>
+            <div className="space-y-1"><Label>Código de barras</Label><Input value={barcode} onChange={(e) => setBarcode(e.target.value)} placeholder="8410…" /></div>
+          </div>
+          <div className="space-y-1">
+            <Label>Foto (URL)</Label>
+            <Input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…" />
+            {imageUrl.trim() && <img src={imageUrl.trim()} alt="" className="mt-2 h-28 w-full rounded-lg object-contain" />}
+          </div>
+          <div className="space-y-1">
+            <Label>Valores nutricionales (por 100 g)</Label>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {numFields.map((nf) => (
+                <div key={nf.k} className="space-y-1">
+                  <span className="block text-[10px] font-medium" style={{ color: nf.color ?? "hsl(var(--muted-foreground))" }}>{nf.label}</span>
+                  <Input value={f[nf.k]} onChange={setField(nf.k)} inputMode="decimal" placeholder="0" className="h-9" />
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 border-t border-border/60 pt-4">
+            <Button variant="outline" size="sm" onClick={onBack} disabled={saving}>Cancelar</Button>
+            <Button size="sm" onClick={save} disabled={saving}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Guardar</Button>
+          </div>
+        </div>
       </div>
     </div>
   );
