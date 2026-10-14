@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Leaf,
   ArrowRight,
+  ArrowLeft,
   Menu,
   X,
   Users,
@@ -2338,15 +2339,87 @@ function DayAnalysis({
   );
 }
 
+function RecipeView({
+  recipe,
+  fullscreen,
+  onBack,
+  onClose,
+  onEdit,
+}: {
+  recipe: RecipeItem;
+  fullscreen: boolean;
+  onBack: () => void;
+  onClose: () => void;
+  onEdit: () => void;
+}) {
+  const img = recipeImageUrl(recipe.image_path);
+  const hasManual = recipe.kcal != null || recipe.fat != null || recipe.carb != null || recipe.prot != null;
+  const per100 = hasManual
+    ? { kcal: recipe.kcal ?? 0, fat: recipe.fat ?? 0, carb: recipe.carb ?? 0, prot: recipe.prot ?? 0, fiber: 0 }
+    : macrosPer100g(recipe.ingredients);
+  const known = hasManual || anyKnown(recipe.ingredients);
+  const ings = recipe.ingredients.filter((i) => (i.name ?? "").trim() || (i.amount ?? "").trim());
+  return (
+    <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onBack} aria-label="Volver" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <h3 className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">{recipe.title}</h3>
+        <Button size="sm" variant="outline" onClick={onEdit} className="shrink-0">
+          <Pencil className="h-4 w-4" /> Editar
+        </Button>
+        <button type="button" onClick={onClose} aria-label="Cerrar" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:text-foreground">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className={cn(fullscreen ? "min-h-0 flex-1 overflow-auto" : "")}>
+        <div className="mx-auto max-w-xl space-y-4">
+          {img && <img src={img} alt="" className="h-44 w-full rounded-2xl object-cover" />}
+          <span className="inline-block rounded-full bg-secondary/60 px-2.5 py-0.5 text-xs font-medium text-foreground">
+            {MEALS.find((m) => m.id === recipe.meal)?.label ?? recipe.meal}
+          </span>
+          {known && <MacroTiles macro={per100} note="por 100 g" />}
+          <div>
+            <h4 className="mb-2 text-sm font-semibold text-foreground">Ingredientes</h4>
+            {ings.length > 0 ? (
+              <ul className="space-y-1">
+                {ings.map((i, idx) => {
+                  const alt = (i.name ?? "").trim().toLowerCase().startsWith("o ");
+                  const text = alt ? i.name.trim().slice(2) : i.name;
+                  return (
+                    <li key={idx} className={cn("text-sm", alt ? "pl-5 text-muted-foreground" : "text-foreground")}>
+                      {alt && <span className="mr-1 text-xs italic">o</span>}
+                      {text}
+                      {i.amount ? ` — ${i.amount}` : ""}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Esta receta aún no tiene ingredientes. Pulsa <span className="font-medium">Editar</span> para añadirlos.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RecipeCard({
   r,
   fullscreen,
+  onView,
   onEdit,
   onDuplicate,
   onRemove,
 }: {
   r: RecipeItem;
   fullscreen: boolean;
+  onView: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
   onRemove: () => void;
@@ -2359,7 +2432,10 @@ function RecipeCard({
     : macrosPer100g(r.ingredients);
   const known = hasManual || anyKnown(r.ingredients);
   return (
-    <div className="group overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-elevated)] transition hover:shadow-[var(--shadow-float)]">
+    <div
+      onClick={onView}
+      className="group cursor-pointer overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-elevated)] transition hover:shadow-[var(--shadow-float)]"
+    >
       <div className={cn("relative w-full bg-secondary/40", fullscreen ? "h-16" : "h-24")}>
         {img ? (
           <img src={img} alt="" className="h-full w-full object-cover" />
@@ -2373,6 +2449,7 @@ function RecipeCard({
         </span>
         <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-0 transition group-hover:opacity-100">
           {[
+            { icon: Eye, fn: onView, label: "Ver" },
             { icon: Pencil, fn: onEdit, label: "Editar" },
             { icon: Copy, fn: onDuplicate, label: "Duplicar" },
             { icon: Trash2, fn: onRemove, label: "Eliminar" },
@@ -2380,7 +2457,7 @@ function RecipeCard({
             <button
               key={label}
               type="button"
-              onClick={fn}
+              onClick={(e) => { e.stopPropagation(); fn(); }}
               aria-label={label}
               className="grid h-6 w-6 place-items-center rounded-full bg-card/95 text-muted-foreground shadow-[var(--shadow-soft)] transition hover:text-foreground"
             >
@@ -2741,6 +2818,7 @@ function ProductEditor({
 function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<"new" | RecipeItem | null>(null);
+  const [viewing, setViewing] = useState<RecipeItem | null>(null);
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"card" | "list">("card");
   const [sortBy, setSortBy] = useState<"name" | "meal">("name");
@@ -2769,6 +2847,21 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
         onSaved={() => {
           refresh();
           setEditing(null);
+        }}
+      />
+    );
+  }
+
+  if (viewing) {
+    return (
+      <RecipeView
+        recipe={viewing}
+        fullscreen={fullscreen}
+        onBack={() => setViewing(null)}
+        onClose={onClose}
+        onEdit={() => {
+          setEditing(viewing);
+          setViewing(null);
         }}
       />
     );
@@ -2825,6 +2918,7 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
           key={r.id}
           r={r}
           fullscreen={fullscreen}
+          onView={() => setViewing(r)}
           onEdit={() => setEditing(r)}
           onDuplicate={() => duplicate(r)}
           onRemove={() => remove(r)}
@@ -2845,7 +2939,8 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
         return (
           <div
             key={r.id}
-            className="group flex items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-2 shadow-[var(--shadow-soft)] transition hover:shadow-[var(--shadow-elevated)]"
+            onClick={() => setViewing(r)}
+            className="group flex cursor-pointer items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-2 shadow-[var(--shadow-soft)] transition hover:shadow-[var(--shadow-elevated)]"
           >
             <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-secondary/40">
               {img ? (
@@ -2872,6 +2967,7 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
             )}
             <div className="flex shrink-0 gap-1 opacity-0 transition group-hover:opacity-100">
               {[
+                { icon: Eye, fn: () => setViewing(r), label: "Ver" },
                 { icon: Pencil, fn: () => setEditing(r), label: "Editar" },
                 { icon: Copy, fn: () => duplicate(r), label: "Duplicar" },
                 { icon: Trash2, fn: () => remove(r), label: "Eliminar" },
@@ -2879,7 +2975,7 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
                 <button
                   key={label}
                   type="button"
-                  onClick={fn}
+                  onClick={(e) => { e.stopPropagation(); fn(); }}
                   aria-label={label}
                   className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground transition hover:text-foreground"
                 >
@@ -2955,6 +3051,64 @@ function RecetasPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
   );
 }
 
+type IngRow2 = { product_id: string | null; name: string; amount: string; unit: string; macro: Macro | null };
+const pickMacro2 = (p: { kcal?: number | null; prot?: number | null; fat?: number | null; carb?: number | null; fiber?: number | null } | null | undefined): Macro => ({
+  kcal: p?.kcal ?? 0, prot: p?.prot ?? 0, fat: p?.fat ?? 0, carb: p?.carb ?? 0, fiber: p?.fiber ?? 0,
+});
+type PickProd = { id: string; name: string; brand: string | null; kcal: number | null; prot: number | null; fat: number | null; carb: number | null; fiber: number | null };
+
+function RecipeProductPicker({ value, onSelect }: { value: string; onSelect: (p: PickProd) => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<PickProd[]>([]);
+  useEffect(() => {
+    const term = q.trim().replace(/[%,()]/g, " ").trim();
+    if (!term) { setResults([]); return; }
+    let active = true;
+    const t = setTimeout(async () => {
+      const { data } = await supabase
+        .from("products")
+        .select("id,name,brand,kcal,prot,fat,carb,fiber")
+        .or(`name.ilike.%${term}%,brand.ilike.%${term}%`)
+        .order("name")
+        .limit(15);
+      if (active) setResults((data as PickProd[] | null) ?? []);
+    }, 250);
+    return () => { active = false; clearTimeout(t); };
+  }, [q]);
+  return (
+    <div className="relative flex-1">
+      <Input
+        value={open ? q : value}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onFocus={() => { setOpen(true); setQ(""); }}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Buscar producto…"
+        className="bg-card shadow-[var(--shadow-elevated)]"
+      />
+      {open && results.length > 0 && (
+        <div className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-border bg-card shadow-[var(--shadow-float)]">
+          {results.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onSelect(p); setOpen(false); }}
+              className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-secondary/50"
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-foreground">{p.name}</span>
+                {p.brand && <span className="block truncate text-[11px] text-muted-foreground">{p.brand}</span>}
+              </span>
+              <span className="shrink-0 text-[11px] text-muted-foreground">{p.kcal != null ? Math.round(p.kcal) + " kcal" : ""}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RecipeEditor({
   recipe,
   titles,
@@ -2972,10 +3126,15 @@ function RecipeEditor({
 }) {
   const [title, setTitle] = useState(recipe?.title ?? "");
   const [meal, setMeal] = useState(recipe?.meal ?? "almuerzo");
-  const [ingredients, setIngredients] = useState<{ name: string; amount: string; unit: string }[]>(
+  const [ingredients, setIngredients] = useState<IngRow2[]>(
     recipe && recipe.ingredients.length > 0
-      ? recipe.ingredients.map((i) => ({ name: i.name, ...splitAmount(i.amount) }))
-      : [{ name: "", amount: "", unit: "gr" }],
+      ? (recipe.ingredients as Array<{ name: string; amount: string; product_id?: string | null }>).map((i) => ({
+          product_id: i.product_id ?? null,
+          name: i.name,
+          macro: null,
+          ...splitAmount(i.amount),
+        }))
+      : [{ product_id: null, name: "", amount: "", unit: "gr", macro: null }],
   );
   const [imagePath, setImagePath] = useState<string | null>(recipe?.image_path ?? null);
   const [imgUploading, setImgUploading] = useState(false);
@@ -2989,6 +3148,33 @@ function RecipeEditor({
   const [mProt, setMProt] = useState(num(recipe?.prot));
   const [imgSearching, setImgSearching] = useState(false);
   const [imgResults, setImgResults] = useState<{ url: string; thumbnail: string; provider: string }[] | null>(null);
+
+  // Carga los macros de los productos ya enlazados (para recalcular al editar).
+  useEffect(() => {
+    const ids = ingredients.filter((r) => r.product_id).map((r) => r.product_id as string);
+    if (!ids.length) return;
+    (async () => {
+      const { data } = await supabase.from("products").select("id,kcal,prot,fat,carb,fiber").in("id", ids);
+      const map = new Map((data ?? []).map((p) => [(p as { id: string }).id, p]));
+      setIngredients((prev) => prev.map((r) => (r.product_id && map.has(r.product_id) ? { ...r, macro: pickMacro2(map.get(r.product_id) as Parameters<typeof pickMacro2>[0]) } : r)));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Macros por 100 g calculados de los productos (filas con unidad gr/ml).
+  const compMacro = (() => {
+    let kcal = 0, prot = 0, fat = 0, carb = 0, fiber = 0, grams = 0;
+    for (const r of ingredients) {
+      if (!r.macro || (r.unit !== "gr" && r.unit !== "ml")) continue;
+      const g = parseFloat((r.amount || "").replace(",", "."));
+      if (!isFinite(g) || g <= 0) continue;
+      const k = g / 100;
+      kcal += r.macro.kcal * k; prot += r.macro.prot * k; fat += r.macro.fat * k; carb += r.macro.carb * k; fiber += r.macro.fiber * k;
+      grams += g;
+    }
+    if (grams <= 0) return null;
+    return { grams, totalKcal: kcal, per100: { kcal: kcal * 100 / grams, prot: prot * 100 / grams, fat: fat * 100 / grams, carb: carb * 100 / grams, fiber: fiber * 100 / grams } as Macro };
+  })();
 
   async function searchPhotos() {
     const q = title.trim();
@@ -3056,13 +3242,14 @@ function RecipeEditor({
       title: title.trim(),
       content: "",
       image_path: imagePath,
-      kcal: toNum(mKcal),
-      fat: toNum(mFat),
-      carb: toNum(mCarb),
-      prot: toNum(mProt),
+      kcal: compMacro ? Math.round(compMacro.per100.kcal) : toNum(mKcal),
+      fat: compMacro ? round1(compMacro.per100.fat) : toNum(mFat),
+      carb: compMacro ? round1(compMacro.per100.carb) : toNum(mCarb),
+      prot: compMacro ? round1(compMacro.per100.prot) : toNum(mProt),
       ingredients: ingredients
         .filter((i) => i.name.trim() || i.amount.trim())
         .map((i) => ({
+          product_id: i.product_id,
           name: i.name.trim(),
           amount: [i.amount.trim(), i.amount.trim() ? i.unit : ""].filter(Boolean).join(" "),
         })),
@@ -3219,61 +3406,56 @@ function RecipeEditor({
 
       <div className="space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-          <Label>Ingredientes / cantidades</Label>
-          <span className="text-[11px] text-muted-foreground">
-            Autocompletado con la base de datos española de alimentos{" "}
-            <a href="https://www.bedca.net/" target="_blank" rel="noopener noreferrer" className="text-primary underline">
-              BEDCA
-            </a>
-          </span>
+          <Label>Ingredientes (de tus productos)</Label>
+          {compMacro && (
+            <span className="text-[11px] text-muted-foreground">{Math.round(compMacro.totalKcal)} kcal · {Math.round(compMacro.grams)} g totales</span>
+          )}
         </div>
-        {/* Lista de alimentos BEDCA (una sola vez, compartida por todos los campos) */}
-        <datalist id="bedca-foods">
-          {BEDCA_FOODS.map((f) => (
-            <option key={f} value={f} />
-          ))}
-        </datalist>
         {ingredients.map((ing, i) => (
           <div key={i} className="flex items-center gap-2">
-            <Input
+            <RecipeProductPicker
               value={ing.name}
-              onChange={(e) => setIngredients((p) => p.map((x, idx) => (idx === i ? { ...x, name: e.target.value } : x)))}
-              placeholder="Ingrediente o paso"
-              list="bedca-foods"
-              autoComplete="off"
-              className="flex-1 bg-card shadow-[var(--shadow-elevated)]"
+              onSelect={(p) => setIngredients((prev) => prev.map((x, idx) => (idx === i ? { ...x, product_id: p.id, name: p.name, macro: pickMacro2(p) } : x)))}
             />
             <Input
               value={ing.amount}
               onChange={(e) => setIngredients((p) => p.map((x, idx) => (idx === i ? { ...x, amount: e.target.value } : x)))}
-              placeholder="200"
-              inputMode="numeric"
-              className="w-16 shrink-0 bg-card shadow-[var(--shadow-elevated)] sm:w-24"
+              placeholder="100"
+              inputMode="decimal"
+              className="w-14 shrink-0 bg-card shadow-[var(--shadow-elevated)] sm:w-20"
             />
             <Select value={ing.unit} onValueChange={(v) => setIngredients((p) => p.map((x, idx) => (idx === i ? { ...x, unit: v } : x)))}>
-              <SelectTrigger className="w-[88px] shrink-0 bg-card shadow-[var(--shadow-elevated)]">
+              <SelectTrigger className="w-[72px] shrink-0 bg-card shadow-[var(--shadow-elevated)]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="gr">gr</SelectItem>
                 <SelectItem value="ml">ml</SelectItem>
-                <SelectItem value="porción">porción</SelectItem>
+                <SelectItem value="ud">ud</SelectItem>
               </SelectContent>
             </Select>
             <button
               type="button"
-              onClick={() => setIngredients((p) => (p.length > 1 ? p.filter((_, idx) => idx !== i) : p))}
-              disabled={ingredients.length <= 1}
+              onClick={() => setIngredients((p) => (p.length > 1 ? p.filter((_, idx) => idx !== i) : [{ product_id: null, name: "", amount: "", unit: "gr", macro: null }]))}
               aria-label="Quitar línea"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-destructive transition disabled:opacity-30"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-destructive transition hover:bg-secondary/60"
             >
               <Trash2 className="h-4 w-4" />
             </button>
           </div>
         ))}
-        <Button type="button" variant="outline" size="sm" onClick={() => setIngredients((p) => [...p, { name: "", amount: "", unit: "gr" }])}>
-          <Plus className="h-4 w-4" /> Añadir línea
+        <Button type="button" variant="outline" size="sm" onClick={() => setIngredients((p) => [...p, { product_id: null, name: "", amount: "", unit: "gr", macro: null }])}>
+          <Plus className="h-4 w-4" /> Añadir producto
         </Button>
+        <p className="text-[11px] text-muted-foreground">
+          Busca un producto de tu base y pon la cantidad (gr/ml); los macros se calculan solos. ¿No está? Créalo en «Productos».
+        </p>
+        {compMacro && (
+          <div className="pt-1">
+            <Label>Macros calculados (por 100 g)</Label>
+            <MacroTiles macro={compMacro.per100} />
+          </div>
+        )}
       </div>
 
       <div className="flex justify-end gap-2 pt-2">
