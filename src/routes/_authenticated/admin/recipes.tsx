@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, Copy, LayoutGrid, List, Loader2, Pencil, Plus, Save, Search, Trash2, Utensils, X,
+  ArrowLeft, Copy, Eye, LayoutGrid, List, Loader2, Pencil, Plus, Save, Search, Trash2, Utensils, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -92,10 +92,58 @@ function MacroStrip({ macro }: { macro: Macro }) {
   );
 }
 
+function RecipeView({ recipe, onBack, onEdit }: { recipe: Recipe; onBack: () => void; onEdit: () => void }) {
+  const img = recipeImageUrl(recipe.image_path);
+  const { macro, known } = recipeMacros(recipe);
+  const tags = recipeTags(recipe.content);
+  const mealLabel = MEALS.find((m) => m.id === recipe.meal)?.label ?? recipe.meal;
+  const ings = (recipe.ingredients ?? []).filter((i) => (i.name ?? "").trim() || (i.amount ?? "").trim());
+  return (
+    <div className="mx-auto max-w-2xl space-y-5">
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onBack} aria-label="Volver" className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-muted-foreground transition hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <h1 className="min-w-0 flex-1 truncate text-xl font-semibold tracking-tight">{recipe.title}</h1>
+        <Button size="sm" variant="outline" onClick={onEdit} className="shrink-0"><Pencil className="h-4 w-4" /> Editar</Button>
+      </div>
+      {img && <img src={img} alt="" className="h-52 w-full rounded-2xl object-cover" />}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded-full bg-muted/60 px-2.5 py-0.5 text-xs font-medium text-foreground">{mealLabel}</span>
+        {tags.map((t) => <span key={t} className="rounded-full bg-muted/50 px-2 py-0.5 text-[10px] text-muted-foreground">{t}</span>)}
+      </div>
+      {known && <MacroStrip macro={macro} />}
+      <div>
+        <h2 className="mb-2 text-sm font-semibold text-foreground">Ingredientes</h2>
+        {ings.length > 0 ? (
+          <ul className="space-y-1">
+            {ings.map((i, idx) => {
+              const alt = (i.name ?? "").trim().toLowerCase().startsWith("o ");
+              const text = alt ? i.name.trim().slice(2) : i.name;
+              return (
+                <li key={idx} className={cn("text-sm", alt ? "pl-5 text-muted-foreground" : "text-foreground")}>
+                  {alt && <span className="mr-1 text-xs italic">o</span>}
+                  {text}
+                  {i.amount ? ` — ${i.amount}` : ""}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Esta receta aún no tiene ingredientes. Pulsa <span className="font-medium">Editar</span> para añadirlos.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RecipeCard({
-  r, onEdit, onDuplicate, onDelete,
+  r, onView, onEdit, onDuplicate, onDelete,
 }: {
   r: Recipe;
+  onView: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
@@ -105,7 +153,7 @@ function RecipeCard({
   const tags = recipeTags(r.content);
   const mealLabel = MEALS.find((m) => m.id === r.meal)?.label ?? r.meal;
   return (
-    <div className="group overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition hover:shadow-md">
+    <div onClick={onView} className="group cursor-pointer overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition hover:shadow-md">
       <div className="relative h-28 w-full bg-muted/40">
         {img ? (
           <img src={img} alt="" loading="lazy" className="h-full w-full object-cover" />
@@ -119,6 +167,7 @@ function RecipeCard({
         </span>
         <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-0 transition group-hover:opacity-100">
           {[
+            { icon: Eye, fn: onView, label: "Ver" },
             { icon: Pencil, fn: onEdit, label: "Editar" },
             { icon: Copy, fn: onDuplicate, label: "Duplicar" },
             { icon: Trash2, fn: onDelete, label: "Eliminar" },
@@ -126,7 +175,7 @@ function RecipeCard({
             <button
               key={label}
               type="button"
-              onClick={fn}
+              onClick={(e) => { e.stopPropagation(); fn(); }}
               aria-label={label}
               className="grid h-6 w-6 place-items-center rounded-full bg-card/95 text-muted-foreground shadow-sm transition hover:text-foreground"
             >
@@ -157,9 +206,10 @@ function RecipeCard({
 }
 
 function RecipeListRow({
-  r, onEdit, onDuplicate, onDelete,
+  r, onView, onEdit, onDuplicate, onDelete,
 }: {
   r: Recipe;
+  onView: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
@@ -168,7 +218,7 @@ function RecipeListRow({
   const { macro, known } = recipeMacros(r);
   const mealLabel = MEALS.find((m) => m.id === r.meal)?.label ?? r.meal;
   return (
-    <div className="group flex items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-2 shadow-sm transition hover:shadow-md">
+    <div onClick={onView} className="group flex cursor-pointer items-center gap-3 rounded-xl border border-border/60 bg-card px-3 py-2 shadow-sm transition hover:shadow-md">
       <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-muted/40">
         {img ? <img src={img} alt="" loading="lazy" className="h-full w-full object-cover" /> : <Utensils className="h-4 w-4 text-muted-foreground/50" />}
       </span>
@@ -186,11 +236,12 @@ function RecipeListRow({
       )}
       <div className="flex shrink-0 gap-1 opacity-0 transition group-hover:opacity-100">
         {[
+          { icon: Eye, fn: onView, label: "Ver" },
           { icon: Pencil, fn: onEdit, label: "Editar" },
           { icon: Copy, fn: onDuplicate, label: "Duplicar" },
           { icon: Trash2, fn: onDelete, label: "Eliminar" },
         ].map(({ icon: Icon, fn, label }) => (
-          <button key={label} type="button" onClick={fn} aria-label={label}
+          <button key={label} type="button" onClick={(e) => { e.stopPropagation(); fn(); }} aria-label={label}
             className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground transition hover:text-foreground">
             <Icon className="h-3.5 w-3.5" />
           </button>
@@ -207,6 +258,7 @@ function RecipesPage() {
   const [sortBy, setSortBy] = useState<"name" | "kcal">("name");
   const [view, setView] = useState<"card" | "list">("card");
   const [editing, setEditing] = useState<"new" | Recipe | null>(null);
+  const [viewing, setViewing] = useState<Recipe | null>(null);
 
   const { data: recipes, isLoading } = useQuery({
     queryKey: ["recipes-all"],
@@ -264,6 +316,18 @@ function RecipesPage() {
           recipe={editing === "new" ? null : editing}
           onCancel={() => setEditing(null)}
           onSaved={() => { refresh(); setEditing(null); }}
+        />
+      </AppShell>
+    );
+  }
+
+  if (viewing) {
+    return (
+      <AppShell>
+        <RecipeView
+          recipe={viewing}
+          onBack={() => setViewing(null)}
+          onEdit={() => { setEditing(viewing); setViewing(null); }}
         />
       </AppShell>
     );
@@ -330,13 +394,13 @@ function RecipesPage() {
         ) : view === "card" ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {list.map((r) => (
-              <RecipeCard key={r.id} r={r} onEdit={() => setEditing(r)} onDuplicate={() => duplicate(r)} onDelete={() => remove(r)} />
+              <RecipeCard key={r.id} r={r} onView={() => setViewing(r)} onEdit={() => setEditing(r)} onDuplicate={() => duplicate(r)} onDelete={() => remove(r)} />
             ))}
           </div>
         ) : (
           <div className="space-y-1.5">
             {list.map((r) => (
-              <RecipeListRow key={r.id} r={r} onEdit={() => setEditing(r)} onDuplicate={() => duplicate(r)} onDelete={() => remove(r)} />
+              <RecipeListRow key={r.id} r={r} onView={() => setViewing(r)} onEdit={() => setEditing(r)} onDuplicate={() => duplicate(r)} onDelete={() => remove(r)} />
             ))}
           </div>
         )}
