@@ -2204,7 +2204,7 @@ type NutritionTarget = {
   target_carb: number | null;
 };
 
-function MacroTiles({ macro, note }: { macro: Macro; note?: string }) {
+function MacroTiles({ macro, note, light }: { macro: Macro; note?: string; light?: boolean }) {
   const items = [
     { label: "Energía", val: Math.round(macro.kcal), unit: "kcal", color: MACRO.kcal },
     { label: "Grasa", val: round1(macro.fat), unit: "g", color: MACRO.fat },
@@ -2216,7 +2216,13 @@ function MacroTiles({ macro, note }: { macro: Macro; note?: string }) {
       {note && <p className="mb-1 text-[10px] text-muted-foreground">{note}</p>}
       <div className="grid grid-cols-4 gap-1.5">
         {items.map((it) => (
-          <div key={it.label} className="rounded-lg bg-secondary/40 px-1 py-1 text-center">
+          <div
+            key={it.label}
+            className={cn(
+              "rounded-lg px-1 py-1.5 text-center",
+              light ? "border border-border/50 bg-card shadow-[var(--shadow-soft)]" : "bg-secondary/40",
+            )}
+          >
             <span className="block truncate text-[9px] font-medium" style={{ color: it.color }}>
               {it.label}
             </span>
@@ -2402,11 +2408,11 @@ function RecipeView({
       <div className={cn(fullscreen ? "min-h-0 flex-1 overflow-auto" : "")}>
         <div className="mx-auto max-w-xl space-y-4">
           {img && <img src={img} alt="" className="h-44 w-full rounded-2xl object-cover" />}
-          <span className="inline-block rounded-full bg-secondary/60 px-2.5 py-0.5 text-xs font-medium text-foreground">
+          <span className="inline-block rounded-full border border-border/50 bg-card px-3 py-1 text-xs font-medium text-foreground shadow-[var(--shadow-soft)]">
             {MEALS.find((m) => m.id === recipe.meal)?.label ?? recipe.meal}
           </span>
-          {known && <MacroTiles macro={per100} note="por 100 g" />}
-          <div>
+          {known && <MacroTiles macro={per100} note="por 100 g" light />}
+          <div className="rounded-2xl border border-border/50 bg-card p-4 shadow-[var(--shadow-elevated)]">
             <h4 className="mb-2 text-sm font-semibold text-foreground">Ingredientes</h4>
             {ings.length > 0 ? (
               <ul className="space-y-1">
