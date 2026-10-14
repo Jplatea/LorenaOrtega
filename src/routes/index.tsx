@@ -5736,7 +5736,7 @@ function WeightAreaChart({ points }: { points: { date: string; weight: number }[
   const fmtD = (s: string) => new Date(s).toLocaleDateString("es-ES", { day: "2-digit", month: "short" });
   const C = "#5FB98E";
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full text-foreground">
+    <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full max-w-[520px] text-foreground">
       <defs>
         <linearGradient id="wgrad" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={C} stopOpacity="0.28" />
