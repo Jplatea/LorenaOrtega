@@ -4132,14 +4132,8 @@ function VisualDietBoard({
           <option key={r.id} value={r.title} />
         ))}
       </datalist>
-      {/* Paleta de recetas (arrastrables) */}
+      {/* Paleta de recetas (arrastrables) — el buscador está arriba, en la fila de días */}
       <div className={cn("space-y-3", fullscreen && "flex w-[290px] shrink-0 flex-col")}>
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar receta…"
-          className="bg-card shadow-[var(--shadow-soft)]"
-        />
         {activeMeal ? (
           <button
             type="button"
@@ -4962,11 +4956,19 @@ function DietEditor({
         </div>
       )}
 
-      {/* Semana + días CENTRADOS; análisis del día a la derecha */}
-      <div className="relative flex flex-wrap items-center justify-center gap-3">
-        {semanaControl}
-        <div className="max-w-full overflow-x-auto">{days}</div>
-        <div className="sm:absolute sm:right-0">{analysis}</div>
+      {/* Buscador de recetas (izq, alineado sobre la columna) + Semana + días + análisis */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Input
+          value={paletteSearch}
+          onChange={(e) => setPaletteSearch(e.target.value)}
+          placeholder="Buscar receta…"
+          className="h-9 w-full bg-card shadow-[var(--shadow-soft)] sm:w-[290px] sm:shrink-0"
+        />
+        <div className="flex flex-1 flex-wrap items-center justify-center gap-2">
+          {semanaControl}
+          <div className="max-w-full overflow-x-auto">{days}</div>
+        </div>
+        <div className="shrink-0">{analysis}</div>
       </div>
 
       {isLoading ? (
