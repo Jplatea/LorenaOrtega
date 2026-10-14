@@ -55,6 +55,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Reveal } from "@/components/reveal";
+import { ComposeEmailModal } from "@/components/compose-email-modal";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { createPatient, resetPatientPassword, saveDietPdf, attachResourceToPatient } from "@/lib/patients.functions";
@@ -6024,6 +6025,7 @@ function ClientDetail({
   const resetPass = useServerFn(resetPatientPassword);
   const [pwLoading, setPwLoading] = useState(false);
   const [pwResult, setPwResult] = useState<string | null>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
   const { data: p, isLoading } = useQuery({
     queryKey: ["cliente-detalle", id],
     queryFn: async () => {
@@ -6092,6 +6094,9 @@ function ClientDetail({
         <div className="p-6 text-sm text-muted-foreground">Cliente no encontrado.</div>
       ) : (
         <>
+          {composeOpen && (
+            <ComposeEmailModal defaultTo={p.email ?? ""} onClose={() => setComposeOpen(false)} />
+          )}
           <div className="flex flex-wrap items-center gap-3">
             <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-primary-soft text-base font-medium text-foreground">
               {(p.first_name?.[0] ?? "") + (p.last_name?.[0] ?? "")}
@@ -6102,6 +6107,15 @@ function ClientDetail({
               </div>
               <div className="truncate text-sm text-muted-foreground">{p.email}</div>
             </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setComposeOpen(true)}
+              className="shrink-0"
+              title="Escribir un correo a este cliente desde hola@lorenaortega.es"
+            >
+              <Mail className="h-4 w-4" /> Escribir correo
+            </Button>
             <Button
               size="sm"
               variant="outline"
