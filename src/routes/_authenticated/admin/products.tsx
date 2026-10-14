@@ -87,11 +87,11 @@ function ProductCard({ p, onEdit, onDelete }: { p: Product; onEdit: () => void; 
           {p.kind === "alimento" ? "Alimento" : "Producto"}
         </span>
         {p.nutri_score && <span className="absolute right-1.5 top-1.5"><NutriScore grade={p.nutri_score} /></span>}
-        <div className="absolute bottom-1.5 right-1.5 flex gap-1 opacity-0 transition group-hover:opacity-100">
+        <div className="absolute bottom-1.5 right-1.5 flex gap-1">
           {[{ icon: Pencil, fn: onEdit, label: "Editar" }, { icon: Trash2, fn: onDelete, label: "Eliminar" }].map(({ icon: Icon, fn, label }) => (
             <button key={label} type="button" onClick={fn} aria-label={label}
-              className="grid h-6 w-6 place-items-center rounded-full bg-card/95 text-muted-foreground shadow-sm transition hover:text-foreground">
-              <Icon className="h-3 w-3" />
+              className="grid h-7 w-7 place-items-center rounded-full bg-card/95 text-foreground shadow-sm transition hover:bg-primary hover:text-primary-foreground">
+              <Icon className="h-3.5 w-3.5" />
             </button>
           ))}
         </div>
@@ -261,9 +261,9 @@ function ProductListRow({ p, onEdit, onDelete }: { p: Product; onEdit: () => voi
         <span style={{ color: MACRO.carb }}>HC {p.carb != null ? round1(p.carb) : "—"}</span>
         <span style={{ color: MACRO.prot }}>P {p.prot != null ? round1(p.prot) : "—"}</span>
       </div>
-      <div className="flex shrink-0 gap-1 opacity-0 transition group-hover:opacity-100">
+      <div className="flex shrink-0 gap-1">
         {[{ icon: Pencil, fn: onEdit, label: "Editar" }, { icon: Trash2, fn: onDelete, label: "Eliminar" }].map(({ icon: Icon, fn, label }) => (
-          <button key={label} type="button" onClick={fn} aria-label={label} className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground transition hover:text-foreground"><Icon className="h-3.5 w-3.5" /></button>
+          <button key={label} type="button" onClick={fn} aria-label={label} className="grid h-8 w-8 place-items-center rounded-lg border border-border text-foreground transition hover:bg-muted"><Icon className="h-3.5 w-3.5" /></button>
         ))}
       </div>
     </div>
