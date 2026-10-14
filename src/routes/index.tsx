@@ -4213,13 +4213,13 @@ function VisualDietBoard({
                 type="button"
                 onClick={() => setTabMeal(m.id)}
                 className={cn(
-                  "-mb-px inline-flex items-center gap-1.5 rounded-t-xl border border-b-0 px-3.5 py-2 text-xs font-medium transition",
+                  "-mb-px inline-flex items-center gap-2 rounded-t-xl border border-b-0 px-4 py-2.5 text-[13px] font-medium transition",
                   active
-                    ? "border-border bg-card text-foreground shadow-[var(--shadow-soft)]"
-                    : "border-transparent bg-secondary/30 text-muted-foreground hover:text-foreground",
+                    ? "border-border bg-card text-foreground"
+                    : "border-transparent bg-secondary/40 text-muted-foreground hover:text-foreground",
                 )}
               >
-                {Icon && <Icon className="h-3.5 w-3.5" aria-hidden />}
+                {Icon && <Icon className="h-4 w-4" aria-hidden />}
                 {m.label}
                 {has && (
                   <span className={cn("inline-block h-1.5 w-1.5 rounded-full align-middle", active ? "bg-primary" : "bg-primary/50")} />
@@ -4228,7 +4228,7 @@ function VisualDietBoard({
             );
           })}
         </div>
-        <div className={cn(fullscreen ? "min-h-0 flex-1 overflow-y-auto pt-2.5 pr-1" : "pt-2.5")}>
+        <div className={cn("rounded-b-2xl rounded-tr-2xl border border-t-0 border-border bg-card p-3 shadow-[var(--shadow-elevated)]", fullscreen ? "min-h-0 flex-1 overflow-y-auto" : "")}>
         {MEALS.filter((m) => m.id === tabMeal).map((m) => {
           const key = `${activeDay}-${m.id}`;
           const cell = getCell(key);
@@ -4250,12 +4250,12 @@ function VisualDietBoard({
                 if (rec) addRecipe(m.id, rec);
               }}
               className={cn(
-                "rounded-2xl border-2 border-dashed p-2.5 transition",
+                "rounded-xl border-2 border-dashed p-0.5 transition",
                 isOver
                   ? "border-primary bg-primary-soft/40"
                   : activeMeal === m.id
-                    ? "border-primary/60 bg-primary-soft/20"
-                    : "border-border bg-card/60",
+                    ? "border-primary/50 bg-primary-soft/10"
+                    : "border-transparent",
               )}
             >
               <button
