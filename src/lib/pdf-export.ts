@@ -76,8 +76,6 @@ async function renderPdf(opts: {
   doc.addFont("Poppins-Regular.ttf", FONT, "normal");
   doc.addFileToVFS("Poppins-Medium.ttf", POPPINS_MEDIUM);
   doc.addFont("Poppins-Medium.ttf", FONT, "medium");
-  const { FIRMA_DATA_URI } = await import("./firma-data");
-
   const PAGE_W = doc.internal.pageSize.getWidth();
   const PAGE_H = doc.internal.pageSize.getHeight();
   const MARGIN = 40;
@@ -275,14 +273,55 @@ async function renderPdf(opts: {
     return y + h + 9;
   };
 
-  const sigW = 340;
-  const sigH = sigW * (263 / 600);
-  const drawSignature = (y: number) => {
-    try {
-      doc.addImage(FIRMA_DATA_URI, "JPEG", (PAGE_W - sigW) / 2, y, sigW, sigH);
-    } catch {
-      /* si la imagen fallara, no rompe el PDF */
-    }
+  // Pie de página con el ESTILO de la firma: curvas de color pastel en las
+  // esquinas + datos de contacto centrados (sin incrustar la imagen).
+  const drawFooter = () => {
+    const g = doc as unknown as {
+      GState?: new (o: { opacity: number }) => unknown;
+      setGState?: (s: unknown) => void;
+    };
+    const hasG = typeof g.GState === "function" && typeof g.setGState === "function";
+    const soft = (op: number) => {
+      if (hasG) g.setGState!(new g.GState!({ opacity: op }));
+    };
+
+    const footTop = PAGE_H - 84;
+
+    const blob = (cx: number, cy: number, rx: number, ry: number, rgb: [number, number, number], op: number) => {
+      soft(op);
+      doc.setFillColor(...rgb);
+      doc.ellipse(cx, cy, rx, ry, "F");
+    };
+    // Esquina izquierda
+    blob(36, PAGE_H - 16, 80, 44, SAGE, 0.5);
+    blob(100, PAGE_H + 16, 62, 38, NUDE, 0.45);
+    blob(12, PAGE_H - 46, 42, 28, CORAL, 0.26);
+    // Esquina derecha
+    blob(PAGE_W - 38, PAGE_H - 20, 84, 46, NUDE, 0.5);
+    blob(PAGE_W - 100, PAGE_H + 14, 62, 38, CORAL, 0.42);
+    blob(PAGE_W - 14, PAGE_H - 48, 42, 28, SAGE, 0.3);
+    soft(1);
+
+    doc.setDrawColor(210, 205, 196);
+    doc.setLineWidth(0.6);
+    doc.line(MARGIN + 70, footTop, PAGE_W - MARGIN - 70, footTop);
+
+    doc.setFont(...MED);
+    doc.setFontSize(8.5);
+    doc.setTextColor(...SAGE_DARK);
+    doc.setCharSpace(1.1);
+    doc.text("LORENA ORTEGA  ·  NUTRICIÓN · SALUD · BIENESTAR", PAGE_W / 2, footTop + 20, { align: "center" });
+    doc.setCharSpace(0);
+
+    doc.setFont(...REG);
+    doc.setFontSize(8.5);
+    doc.setTextColor(...INK);
+    doc.text(
+      "658 894 356   ·   lorena@lorenaortega.es   ·   @lorenaortega   ·   Málaga y online",
+      PAGE_W / 2,
+      footTop + 36,
+      { align: "center" }
+    );
   };
 
   const daysWithContent = DAYS.filter((d) => MEALS.some((m) => mealGroups(rowContent(d.id, m.id)).length > 0));
@@ -309,9 +348,7 @@ async function renderPdf(opts: {
 
     if (n && n.kcal > 0) y = drawDayAnalysis(n, y + 2);
 
-    // Firma: justo debajo del contenido, o anclada al pie si el día es corto.
-    const sigY = Math.max(y + 10, PAGE_H - 46 - sigH);
-    drawSignature(sigY);
+    drawFooter();
   });
 
   // Numeración de páginas
@@ -321,7 +358,7 @@ async function renderPdf(opts: {
     doc.setFont(...REG);
     doc.setFontSize(7.5);
     doc.setTextColor(...MUTED);
-    doc.text(`${i} / ${total}`, PAGE_W - MARGIN, PAGE_H - 20, { align: "right" });
+    doc.text(`${i} / ${total}`, PAGE_W / 2, PAGE_H - 12, { align: "center" });
   }
 
   return doc;
