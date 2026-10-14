@@ -75,19 +75,13 @@ function renderDietCard({ name }: { name: string }) {
         <tr><td style="background:#ffffff;border:1px solid ${LINE};border-radius:20px;overflow:hidden;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
             <tr>
-              <td background="${CHIRIMOYA_IMG}" bgcolor="${GREEN}" valign="bottom" height="190" style="height:190px;background-image:url('${CHIRIMOYA_IMG}');background-size:cover;background-position:center;background-color:${GREEN};border-radius:20px 20px 0 0;">
-                <!--[if gte mso 9]>
-                <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:560px;height:190px;">
-                  <v:fill type="frame" src="${CHIRIMOYA_IMG}" color="${GREEN}" /><v:textbox inset="0,0,0,0"><div>
-                <![endif]-->
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:120px 34px 22px;">
-                  <p style="margin:0 0 6px;font-size:10px;font-weight:500;letter-spacing:2.4px;text-transform:uppercase;color:#eafaf2;">Tu plan</p>
-                  <p style="margin:0;font-size:27px;line-height:33px;font-weight:300;color:#ffffff;text-shadow:0 1px 6px rgba(0,0,0,0.35);">Tu dieta ya está lista</p>
-                </td></tr></table>
-                <!--[if gte mso 9]></div></v:textbox></v:rect><![endif]-->
+              <td align="center" style="background:#eef6f1;padding:32px 20px 24px;border-radius:20px 20px 0 0;">
+                <img src="${CHIRIMOYA_IMG}" width="210" alt="Chirimoya" style="width:210px;max-width:58%;height:auto;display:inline-block;border:0;outline:none;" />
               </td>
             </tr>
-            <tr><td style="padding:28px 34px 6px;">
+            <tr><td style="padding:26px 36px 4px;">
+              <p style="margin:0 0 6px;font-size:10px;font-weight:500;letter-spacing:2.4px;text-transform:uppercase;color:${GREEN};">Tu plan</p>
+              <h1 style="margin:0 0 16px;font-size:26px;line-height:32px;font-weight:300;color:${INK};">Tu dieta ya está lista</h1>
               <p style="margin:0 0 14px;font-size:16px;line-height:1.7;font-weight:400;color:${INK};">${hello}</p>
               <p style="margin:0 0 22px;font-size:15px;line-height:1.75;font-weight:300;color:${INK};">Ya tienes disponible tu nueva dieta en tu área privada. Entra cuando quieras para verla por días, consultar las recetas y descargarla.</p>
             </td></tr>
