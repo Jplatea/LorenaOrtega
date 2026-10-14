@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Copy, LayoutGrid, List, Loader2, Pencil, Plus, Save, Search, Trash2, Utensils, X,
@@ -360,44 +360,139 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
   );
 }
 
-function RecipeEditor({
-  recipe, onCancel, onSaved,
-}: {
-  recipe: Recipe | null;
-  onCancel: () => void;
-  onSaved: () => void;
-}) {
+type Prod = { id: string; name: string; brand: string | null; kcal: number | null; prot: number | null; fat: number | null; carb: number | null; fiber: number | null };
+type IngRow = { product_id: string | null; name: string; qty: string; unit: string; macro: Macro | null };
+const UNITS = ["g", "ml", "ud"];
+const pickMacro = (p: Partial<Prod> | undefined | null): Macro => ({
+  kcal: p?.kcal ?? 0, prot: p?.prot ?? 0, fat: p?.fat ?? 0, carb: p?.carb ?? 0, fiber: p?.fiber ?? 0,
+});
+function parseAmount(amount: string): { qty: string; unit: string } {
+  const m = String(amount || "").match(/([\d.,]+)\s*(g|gr|ml|ud|unidad|unidades)?/i);
+  if (!m) return { qty: "", unit: "g" };
+  let unit = (m[2] || "g").toLowerCase();
+  if (unit === "gr") unit = "g";
+  if (unit.startsWith("unidad")) unit = "ud";
+  return { qty: m[1] || "", unit: UNITS.includes(unit) ? unit : "g" };
+}
+
+function ProductPicker({ value, onSelect }: { value: string; onSelect: (p: Prod) => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<Prod[]>([]);
+  useEffect(() => {
+    const term = q.trim().replace(/[%,()]/g, " ").trim();
+    if (!term) { setResults([]); return; }
+    let active = true;
+    const t = setTimeout(async () => {
+      const { data } = await supabase
+        .from("products")
+        .select("id,name,brand,kcal,prot,fat,carb,fiber")
+        .or(`name.ilike.%${term}%,brand.ilike.%${term}%`)
+        .order("name")
+        .limit(15);
+      if (active) setResults((data as Prod[] | null) ?? []);
+    }, 250);
+    return () => { active = false; clearTimeout(t); };
+  }, [q]);
+  return (
+    <div className="relative flex-1">
+      <Input
+        value={open ? q : value}
+        onChange={(e) => { setQ(e.target.value); setOpen(true); }}
+        onFocus={() => { setOpen(true); setQ(""); }}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Buscar producto…"
+      />
+      {open && results.length > 0 && (
+        <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-border bg-card shadow-md">
+          {results.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onSelect(p); setOpen(false); }}
+              className="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-sm hover:bg-muted/60"
+            >
+              <span className="min-w-0">
+                <span className="block truncate">{p.name}</span>
+                {p.brand && <span className="block truncate text-[11px] text-muted-foreground">{p.brand}</span>}
+              </span>
+              <span className="shrink-0 text-[11px] text-muted-foreground">{p.kcal != null ? Math.round(p.kcal) + " kcal" : ""}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RecipeEditor({ recipe, onCancel, onSaved }: { recipe: Recipe | null; onCancel: () => void; onSaved: () => void }) {
   const [title, setTitle] = useState(recipe?.title ?? "");
   const [meal, setMeal] = useState<MealId>(recipe?.meal ?? "almuerzo");
   const [imageUrl, setImageUrl] = useState(recipe?.image_path ?? "");
-  const [kcal, setKcal] = useState(recipe?.kcal?.toString() ?? "");
-  const [prot, setProt] = useState(recipe?.prot?.toString() ?? "");
-  const [fat, setFat] = useState(recipe?.fat?.toString() ?? "");
-  const [carb, setCarb] = useState(recipe?.carb?.toString() ?? "");
-  const [ingredients, setIngredients] = useState<Ingredient[]>(
-    recipe && recipe.ingredients.length ? recipe.ingredients : [{ name: "", amount: "" }],
-  );
+  const [rows, setRows] = useState<IngRow[]>(() => {
+    const raw = (recipe?.ingredients ?? []) as Array<{ name?: string; amount?: string; product_id?: string | null }>;
+    if (!raw.length) return [{ product_id: null, name: "", qty: "", unit: "g", macro: null }];
+    return raw.map((i) => {
+      const { qty, unit } = parseAmount(i.amount ?? "");
+      return { product_id: i.product_id ?? null, name: i.name ?? "", qty, unit, macro: null };
+    });
+  });
   const [saving, setSaving] = useState(false);
 
-  const numOrNull = (s: string) => {
-    const n = parseFloat(s.replace(",", "."));
-    return isFinite(n) ? n : null;
-  };
+  // Carga los macros de los productos ya enlazados (para recalcular al editar).
+  useEffect(() => {
+    const ids = rows.filter((r) => r.product_id).map((r) => r.product_id as string);
+    if (!ids.length) return;
+    (async () => {
+      const { data } = await supabase.from("products").select("id,kcal,prot,fat,carb,fiber").in("id", ids);
+      const map = new Map((data ?? []).map((p) => [(p as Prod).id, p as Prod]));
+      setRows((prev) => prev.map((r) => (r.product_id && map.has(r.product_id) ? { ...r, macro: pickMacro(map.get(r.product_id)) } : r)));
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const setRow = (i: number, patch: Partial<IngRow>) => setRows((p) => p.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const blankRow = (): IngRow => ({ product_id: null, name: "", qty: "", unit: "g", macro: null });
+
+  // Totales y por 100 g (solo filas con producto y unidad g/ml).
+  const totals = useMemo(() => {
+    let kcal = 0, prot = 0, fat = 0, carb = 0, fiber = 0, grams = 0;
+    for (const r of rows) {
+      if (!r.macro || (r.unit !== "g" && r.unit !== "ml")) continue;
+      const g = parseFloat((r.qty || "").replace(",", "."));
+      if (!isFinite(g) || g <= 0) continue;
+      const k = g / 100;
+      kcal += r.macro.kcal * k; prot += r.macro.prot * k; fat += r.macro.fat * k; carb += r.macro.carb * k; fiber += r.macro.fiber * k;
+      grams += g;
+    }
+    const per100: Macro | null = grams > 0
+      ? { kcal: kcal * 100 / grams, prot: prot * 100 / grams, fat: fat * 100 / grams, carb: carb * 100 / grams, fiber: fiber * 100 / grams }
+      : null;
+    return { total: { kcal, prot, fat, carb, fiber }, grams, per100 };
+  }, [rows]);
 
   async function save() {
     if (!title.trim()) return toast.error("El título es obligatorio");
     setSaving(true);
     const { data: u } = await supabase.auth.getUser();
-    const payload = {
-      meal, title: title.trim(),
-      content: recipe?.content ?? "",
-      ingredients: ingredients.filter((i) => i.name.trim() || i.amount.trim()),
-      image_path: imageUrl.trim() || null,
-      kcal: numOrNull(kcal), prot: numOrNull(prot), fat: numOrNull(fat), carb: numOrNull(carb),
+    const ingredients = rows
+      .filter((r) => r.name.trim())
+      .map((r) => ({ product_id: r.product_id, name: r.name.trim(), amount: r.qty.trim() ? `${r.qty.trim()} ${r.unit}` : "" }));
+    const base: Record<string, unknown> = {
+      meal, title: title.trim(), content: recipe?.content ?? "", ingredients, image_path: imageUrl.trim() || null,
     };
+    if (totals.per100) {
+      base.kcal = Math.round(totals.per100.kcal);
+      base.prot = round1(totals.per100.prot);
+      base.fat = round1(totals.per100.fat);
+      base.carb = round1(totals.per100.carb);
+    } else if (!recipe) {
+      base.kcal = null; base.prot = null; base.fat = null; base.carb = null;
+    }
     const res = recipe
-      ? await supabase.from("recipes").update(payload as never).eq("id", recipe.id)
-      : await supabase.from("recipes").insert({ ...payload, created_by: u.user?.id ?? null } as never);
+      ? await supabase.from("recipes").update(base as never).eq("id", recipe.id)
+      : await supabase.from("recipes").insert({ ...base, created_by: u.user?.id ?? null } as never);
     setSaving(false);
     if (res.error) return toast.error("No se pudo guardar", { description: res.error.message });
     toast.success(recipe ? "Receta actualizada" : "Receta creada");
@@ -405,9 +500,6 @@ function RecipeEditor({
   }
 
   const preview = recipeImageUrl(imageUrl.trim() || null);
-  const macroNums = {
-    kcal: numOrNull(kcal) ?? 0, fat: numOrNull(fat) ?? 0, carb: numOrNull(carb) ?? 0, prot: numOrNull(prot) ?? 0, fiber: 0,
-  };
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
@@ -437,39 +529,45 @@ function RecipeEditor({
           {preview && <img src={preview} alt="" className="mt-2 h-28 w-full rounded-lg object-cover" />}
         </div>
 
-        <div className="space-y-1">
-          <Label>Valores nutricionales (por 100 g)</Label>
-          <div className="grid grid-cols-4 gap-2">
-            {[
-              { v: kcal, set: setKcal, ph: "kcal", color: MACRO.kcal },
-              { v: prot, set: setProt, ph: "Prot", color: MACRO.prot },
-              { v: carb, set: setCarb, ph: "H.C.", color: MACRO.carb },
-              { v: fat, set: setFat, ph: "Grasa", color: MACRO.fat },
-            ].map((f) => (
-              <div key={f.ph} className="space-y-1">
-                <span className="block text-[10px] font-medium" style={{ color: f.color }}>{f.ph}</span>
-                <Input value={f.v} onChange={(e) => f.set(e.target.value)} inputMode="decimal" placeholder="0" className="h-9" />
-              </div>
-            ))}
-          </div>
-          {(kcal || prot || carb || fat) && <div className="mt-2"><MacroStrip macro={macroNums} /></div>}
-        </div>
-
         <div className="space-y-2">
-          <Label>Ingredientes</Label>
-          {ingredients.map((ing, i) => (
+          <div className="flex items-center justify-between">
+            <Label>Ingredientes (de tus productos)</Label>
+            {totals.grams > 0 && (
+              <span className="text-[11px] text-muted-foreground">{Math.round(totals.total.kcal)} kcal · {Math.round(totals.grams)} g totales</span>
+            )}
+          </div>
+          {rows.map((r, i) => (
             <div key={i} className="flex items-center gap-2">
-              <Input value={ing.name} onChange={(e) => setIngredients((p) => p.map((x, idx) => idx === i ? { ...x, name: e.target.value } : x))} placeholder="Ingrediente" className="flex-1" />
-              <Input value={ing.amount} onChange={(e) => setIngredients((p) => p.map((x, idx) => idx === i ? { ...x, amount: e.target.value } : x))} placeholder="200 g" className="w-28" />
-              <Button type="button" variant="ghost" size="sm" onClick={() => setIngredients((p) => p.length > 1 ? p.filter((_, idx) => idx !== i) : p)} className="h-9 w-9 shrink-0 p-0 text-destructive" aria-label="Quitar">
+              <ProductPicker value={r.name} onSelect={(p) => setRow(i, { product_id: p.id, name: p.name, macro: pickMacro(p) })} />
+              <Input value={r.qty} onChange={(e) => setRow(i, { qty: e.target.value })} inputMode="decimal" placeholder="100" className="w-20" />
+              <select value={r.unit} onChange={(e) => setRow(i, { unit: e.target.value })} className="h-10 w-16 rounded-md border border-input bg-card px-1 text-sm">
+                {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setRows((p) => (p.length > 1 ? p.filter((_, idx) => idx !== i) : [blankRow()]))} className="h-9 w-9 shrink-0 p-0 text-destructive" aria-label="Quitar">
                 <Trash2 className="h-4 w-4" />
               </Button>
             </div>
           ))}
-          <Button type="button" variant="outline" size="sm" onClick={() => setIngredients((p) => [...p, { name: "", amount: "" }])}>
-            <Plus className="h-4 w-4" /> Añadir línea
+          <Button type="button" variant="outline" size="sm" onClick={() => setRows((p) => [...p, blankRow()])}>
+            <Plus className="h-4 w-4" /> Añadir producto
           </Button>
+          <p className="text-[11px] text-muted-foreground">
+            Busca un producto de tu base y pon la cantidad (g/ml); los macros se calculan solos. ¿No está? Créalo antes en Productos.
+          </p>
         </div>
+
+        {totals.per100 ? (
+          <div className="space-y-1">
+            <Label>Macros calculados (por 100 g)</Label>
+            <MacroStrip macro={totals.per100} />
+          </div>
+        ) : recipe && recipe.kcal != null ? (
+          <div className="space-y-1">
+            <Label>Macros actuales (por 100 g)</Label>
+            <MacroStrip macro={{ kcal: recipe.kcal ?? 0, prot: recipe.prot ?? 0, fat: recipe.fat ?? 0, carb: recipe.carb ?? 0, fiber: 0 }} />
+            <p className="text-[11px] text-muted-foreground">Importados de Nutrium. Añade productos arriba para recalcularlos.</p>
+          </div>
+        ) : null}
 
         <div className="flex justify-end gap-2 border-t border-border/60 pt-4">
           <Button variant="outline" size="sm" onClick={onCancel} disabled={saving}>Cancelar</Button>
