@@ -176,12 +176,36 @@ function LandingPage() {
   });
 
   useEffect(() => {
+    let active = true;
+    // getSession() refresca el token si está caducado. Solo mostramos el panel
+    // si la sesión es REALMENTE válida; si no, pedimos login (sin panel roto).
     supabase.auth.getSession().then(({ data }) => {
-      if (!data.session) return;
-      // Solo mantenemos la sesión si el usuario marcó "ordenador personal".
-      if (localStorage.getItem("lo-persist") === "1") setAuthed(true);
-      else supabase.auth.signOut();
+      if (!active) return;
+      const s = data.session;
+      const valid = !!s && (s.expires_at ?? 0) > Math.floor(Date.now() / 1000);
+      if (valid && localStorage.getItem("lo-persist") === "1") {
+        setAuthed(true);
+      } else if (s && localStorage.getItem("lo-persist") !== "1") {
+        // No marcó "ordenador personal": no mantener la sesión entre visitas.
+        supabase.auth.signOut();
+      } else if (!valid) {
+        // Sesión caducada o inexistente: limpiar y pedir login.
+        localStorage.removeItem("lo-persist");
+        setAuthed(false);
+      }
     });
+    // Si la sesión se cae en cualquier momento (refresco fallido, expiración),
+    // salimos del panel y mostramos el login en vez de datos vacíos.
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        localStorage.removeItem("lo-persist");
+        setAuthed(false);
+      }
+    });
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   // Con el overlay abierto, bloqueamos el scroll de la página de fondo para
