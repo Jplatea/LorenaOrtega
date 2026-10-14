@@ -3996,6 +3996,7 @@ function VisualDietBoard({
   const dayMacro = MEALS.reduce((a, m) => addMacro(a, macrosByMeal[m.id] ?? zeroMacro()), zeroMacro());
   const qc = useQueryClient();
   const [activeMeal, setActiveMeal] = useState<string | null>(null);
+  const [tabMeal, setTabMeal] = useState<string>(MEALS[0].id);
   const [customFor, setCustomFor] = useState<string | null>(null);
   const [cName, setCName] = useState("");
   const [cDesc, setCDesc] = useState("");
@@ -4207,13 +4208,32 @@ function VisualDietBoard({
 
       {/* Comidas del día (el análisis del día se muestra compacto en la cabecera) */}
       <div className={cn("space-y-3", fullscreen && "flex min-h-0 flex-1 flex-col")}>
-        <div
-          className={cn(
-            "grid gap-2.5 sm:grid-cols-2",
-            fullscreen ? "min-h-0 flex-1 overflow-y-auto pr-1 lg:grid-cols-3" : "",
-          )}
-        >
-        {MEALS.map((m) => {
+        <div className="flex flex-wrap items-end gap-1 border-b border-border">
+          {MEALS.map((m) => {
+            const active = tabMeal === m.id;
+            const has = getCell(`${activeDay}-${m.id}`).options.some((o) => o.recipeId || o.content.trim());
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setTabMeal(m.id)}
+                className={cn(
+                  "-mb-px rounded-t-xl border border-b-0 px-3.5 py-2 text-xs font-medium transition",
+                  active
+                    ? "border-border bg-card text-foreground shadow-[var(--shadow-soft)]"
+                    : "border-transparent bg-secondary/30 text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {m.label}
+                {has && (
+                  <span className={cn("ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle", active ? "bg-primary" : "bg-primary/50")} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <div className={cn(fullscreen ? "min-h-0 flex-1 overflow-y-auto pt-2.5 pr-1" : "pt-2.5")}>
+        {MEALS.filter((m) => m.id === tabMeal).map((m) => {
           const key = `${activeDay}-${m.id}`;
           const cell = getCell(key);
           const hasFood = cell.options.some((o) => o.recipeId || o.content.trim());
@@ -4940,11 +4960,11 @@ function DietEditor({
         </div>
       )}
 
-      {/* Sección de información: Semana (izquierda) · días · análisis compacto (derecha) */}
-      <div className="flex flex-wrap items-center gap-3">
+      {/* Semana + días CENTRADOS; análisis del día a la derecha */}
+      <div className="relative flex flex-wrap items-center justify-center gap-3">
         {semanaControl}
-        <div className="min-w-0 flex-1 overflow-x-auto">{days}</div>
-        {analysis}
+        <div className="max-w-full overflow-x-auto">{days}</div>
+        <div className="sm:absolute sm:right-0">{analysis}</div>
       </div>
 
       {isLoading ? (
