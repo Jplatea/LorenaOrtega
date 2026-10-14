@@ -75,7 +75,7 @@ function renderDietCard({ name }: { name: string }) {
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f1f4f0;border-radius:14px;">
             <tr><td align="left" style="padding:14px 16px 12px;">
               <p style="margin:0 0 10px;font-size:14px;line-height:21px;color:#20382c;">${hello}</p>
-              <p style="margin:0 0 10px;font-size:14px;line-height:21px;color:#5b6b63;">Ya tienes disponible tu nueva dieta en tu área privada. Entra cuando quieras para verla por días, consultar las recetas y descargarla.</p>
+              <p style="margin:0 0 10px;font-size:14px;line-height:21px;color:#5b6b63;">Ya tienes disponible tu nueva dieta en tu área privada: <a href="${CLIENT_WEB}" style="color:#3f8a66;font-weight:500;text-decoration:underline;">www.lorenaortega.es</a>. Entra cuando quieras para verla por días, consultar las recetas y descargarla.</p>
               <p style="margin:0;font-size:11px;color:${BRAND};">Ahora</p>
               <p style="margin:6px 0 0;font-size:12px;font-weight:500;color:#20382c;">Lorena Ortega · Dietética</p>
             </td></tr>
