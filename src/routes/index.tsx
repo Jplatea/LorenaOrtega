@@ -59,6 +59,7 @@ import { ComposeEmailModal } from "@/components/compose-email-modal";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { createPatient, resetPatientPassword, saveDietPdf, attachResourceToPatient } from "@/lib/patients.functions";
+import { sendDietAvailableEmail } from "@/lib/email.functions";
 import { MEALS, DAYS } from "@/lib/domain";
 import { ensureIngredients, renderIngredients } from "@/lib/recipes";
 import { parseMeal, serializeMeal, renderMeal, type MealValue } from "@/lib/meal-options";
@@ -4468,6 +4469,19 @@ function DietEditor({
 }) {
   const qc = useQueryClient();
   const saveDietPdfFn = useServerFn(saveDietPdf);
+  const sendDietEmailFn = useServerFn(sendDietAvailableEmail);
+  const [mailSending, setMailSending] = useState(false);
+  async function emailDiet() {
+    setMailSending(true);
+    try {
+      const r = await sendDietEmailFn({ data: { patientId } });
+      toast.success(`Correo enviado a ${r?.to ?? "el cliente"}`);
+    } catch (e) {
+      toast.error("No se pudo enviar el correo", { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setMailSending(false);
+    }
+  }
   const [pdfSyncError, setPdfSyncError] = useState<string | null>(null);
   const [week, setWeek] = useState(1);
   const [activeDay, setActiveDay] = useState<number>(DAYS[0].id);
@@ -4832,6 +4846,16 @@ function DietEditor({
     <div className={fullscreen ? "flex h-full min-h-0 flex-col space-y-2" : "space-y-4"}>
       {/* Línea estándar: volver + PDF + Guardar + X (igual que el resto de secciones) */}
       <PanelToolbar info={patientName} onBack={onBack} onClose={onClose}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={emailDiet}
+          disabled={mailSending}
+          className="shrink-0"
+          title="Avisar al cliente por correo de que su dieta ya está disponible"
+        >
+          {mailSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />} Mail
+        </Button>
         <Button
           size="sm"
           variant="outline"
