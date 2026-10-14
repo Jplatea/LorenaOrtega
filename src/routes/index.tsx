@@ -4212,21 +4212,23 @@ function VisualDietBoard({
           {MEALS.map((m) => {
             const active = tabMeal === m.id;
             const has = getCell(`${activeDay}-${m.id}`).options.some((o) => o.recipeId || o.content.trim());
+            const Icon = MEAL_ICONS[m.id];
             return (
               <button
                 key={m.id}
                 type="button"
                 onClick={() => setTabMeal(m.id)}
                 className={cn(
-                  "-mb-px rounded-t-xl border border-b-0 px-3.5 py-2 text-xs font-medium transition",
+                  "-mb-px inline-flex items-center gap-1.5 rounded-t-xl border border-b-0 px-3.5 py-2 text-xs font-medium transition",
                   active
                     ? "border-border bg-card text-foreground shadow-[var(--shadow-soft)]"
                     : "border-transparent bg-secondary/30 text-muted-foreground hover:text-foreground",
                 )}
               >
+                {Icon && <Icon className="h-3.5 w-3.5" aria-hidden />}
                 {m.label}
                 {has && (
-                  <span className={cn("ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle", active ? "bg-primary" : "bg-primary/50")} />
+                  <span className={cn("inline-block h-1.5 w-1.5 rounded-full align-middle", active ? "bg-primary" : "bg-primary/50")} />
                 )}
               </button>
             );
@@ -4814,7 +4816,7 @@ function DietEditor({
             type="button"
             onClick={() => setActiveDay(d.id)}
             className={cn(
-              "shrink-0 rounded-full px-4 py-2 text-sm font-medium transition",
+              "shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition",
               active
                 ? "bg-primary text-primary-foreground shadow-[var(--shadow-soft)]"
                 : "bg-card text-foreground shadow-[var(--shadow-elevated)] hover:opacity-90",
@@ -4824,7 +4826,7 @@ function DietEditor({
             {dayFilled(d.id) && (
               <span
                 className={cn(
-                  "ml-2 inline-block h-1.5 w-1.5 rounded-full align-middle",
+                  "ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle",
                   active ? "bg-primary-foreground" : "bg-primary",
                 )}
               />
