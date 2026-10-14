@@ -20,6 +20,7 @@ import { Route as AuthenticatedAccountRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedChangePasswordRouteImport } from './routes/_authenticated/change-password'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
+import { Route as AuthenticatedAdminProductsRouteImport } from './routes/_authenticated/admin/products'
 import { Route as AuthenticatedAdminRecipesRouteImport } from './routes/_authenticated/admin/recipes'
 import { Route as AuthenticatedPatientIndexRouteImport } from './routes/_authenticated/patient/index'
 import { Route as AuthenticatedPatientLibraryRouteImport } from './routes/_authenticated/patient/library'
@@ -83,6 +84,12 @@ const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   path: '/admin/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAdminProductsRoute =
+  AuthenticatedAdminProductsRouteImport.update({
+    id: '/admin/products',
+    path: '/admin/products',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminRecipesRoute =
   AuthenticatedAdminRecipesRouteImport.update({
     id: '/admin/recipes',
@@ -136,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/account': typeof AuthenticatedAccountRoute
   '/change-password': typeof AuthenticatedChangePasswordRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/admin/products': typeof AuthenticatedAdminProductsRoute
   '/admin/recipes': typeof AuthenticatedAdminRecipesRoute
   '/patient/library': typeof AuthenticatedPatientLibraryRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
@@ -155,6 +163,7 @@ export interface FileRoutesByTo {
   '/account': typeof AuthenticatedAccountRoute
   '/change-password': typeof AuthenticatedChangePasswordRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/admin/products': typeof AuthenticatedAdminProductsRoute
   '/admin/recipes': typeof AuthenticatedAdminRecipesRoute
   '/patient/library': typeof AuthenticatedPatientLibraryRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
@@ -176,6 +185,7 @@ export interface FileRoutesById {
   '/_authenticated/account': typeof AuthenticatedAccountRoute
   '/_authenticated/change-password': typeof AuthenticatedChangePasswordRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/admin/products': typeof AuthenticatedAdminProductsRoute
   '/_authenticated/admin/recipes': typeof AuthenticatedAdminRecipesRoute
   '/_authenticated/patient/library': typeof AuthenticatedPatientLibraryRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
@@ -197,6 +207,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/change-password'
     | '/dashboard'
+    | '/admin/products'
     | '/admin/recipes'
     | '/patient/library'
     | '/admin/'
@@ -216,6 +227,7 @@ export interface FileRouteTypes {
     | '/account'
     | '/change-password'
     | '/dashboard'
+    | '/admin/products'
     | '/admin/recipes'
     | '/patient/library'
     | '/admin'
@@ -236,6 +248,7 @@ export interface FileRouteTypes {
     | '/_authenticated/account'
     | '/_authenticated/change-password'
     | '/_authenticated/dashboard'
+    | '/_authenticated/admin/products'
     | '/_authenticated/admin/recipes'
     | '/_authenticated/patient/library'
     | '/_authenticated/admin/'
@@ -335,6 +348,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/products': {
+      id: '/_authenticated/admin/products'
+      path: '/admin/products'
+      fullPath: '/admin/products'
+      preLoaderRoute: typeof AuthenticatedAdminProductsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/recipes': {
       id: '/_authenticated/admin/recipes'
       path: '/admin/recipes'
@@ -391,6 +411,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAccountRoute: typeof AuthenticatedAccountRoute
   AuthenticatedChangePasswordRoute: typeof AuthenticatedChangePasswordRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedAdminProductsRoute: typeof AuthenticatedAdminProductsRoute
   AuthenticatedAdminRecipesRoute: typeof AuthenticatedAdminRecipesRoute
   AuthenticatedPatientLibraryRoute: typeof AuthenticatedPatientLibraryRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
@@ -405,6 +426,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAccountRoute: AuthenticatedAccountRoute,
   AuthenticatedChangePasswordRoute: AuthenticatedChangePasswordRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedAdminProductsRoute: AuthenticatedAdminProductsRoute,
   AuthenticatedAdminRecipesRoute: AuthenticatedAdminRecipesRoute,
   AuthenticatedPatientLibraryRoute: AuthenticatedPatientLibraryRoute,
   AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,

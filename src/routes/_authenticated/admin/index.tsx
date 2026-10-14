@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Users, Activity, UserPlus, Clock, BookOpen } from "lucide-react";
+import { Users, Activity, UserPlus, Clock, BookOpen, Package } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/app-shell";
 import { useCurrentUser } from "@/lib/auth-hooks";
@@ -48,6 +48,13 @@ function AdminHome() {
             <p className="text-muted-foreground mt-1">Resumen general de la clínica.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link
+              to="/admin/products"
+              className="inline-flex items-center gap-2 bg-card text-foreground border border-border px-4 py-2.5 rounded-lg text-sm font-medium hover:opacity-90"
+            >
+              <Package className="h-4 w-4" />
+              Productos
+            </Link>
             <Link
               to="/admin/recipes"
               className="inline-flex items-center gap-2 bg-accent text-accent-foreground border border-border px-4 py-2.5 rounded-lg text-sm font-medium hover:opacity-90"
