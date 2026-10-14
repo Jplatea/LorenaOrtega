@@ -399,7 +399,7 @@ function ProductPicker({ value, onSelect }: { value: string; onSelect: (p: Prod)
       <Input
         value={open ? q : value}
         onChange={(e) => { setQ(e.target.value); setOpen(true); }}
-        onFocus={() => { setOpen(true); setQ(""); }}
+        onFocus={() => { setQ(value); setOpen(true); }}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder="Buscar producto…"
       />
