@@ -1,11 +1,15 @@
 import { createFileRoute, Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Sunrise, Apple, Salad, Coffee, Soup, Moon, type LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCurrentUser } from "@/lib/auth-hooks";
 import { AppShell } from "@/components/app-shell";
 import { DAYS, MEALS } from "@/lib/domain";
 import { renderMeal } from "@/lib/meal-options";
+
+const MEAL_ICONS: Record<string, LucideIcon> = {
+  desayuno: Sunrise, media_manana: Apple, almuerzo: Salad, merienda: Coffee, cena: Soup, antes_dormir: Moon,
+};
 
 export const Route = createFileRoute("/_authenticated/patient/day/$day")({
   component: DayPage,
@@ -64,7 +68,7 @@ function DayPage() {
                 className="bg-card border border-border rounded-2xl p-6 hover:shadow-[var(--shadow-soft)] transition"
               >
                 <div className="flex items-center gap-3 mb-3">
-                  <span className="text-2xl" aria-hidden>{meal.emoji}</span>
+                  {(() => { const Icon = MEAL_ICONS[meal.id]; return Icon ? <Icon className="h-6 w-6 text-primary" aria-hidden /> : null; })()}
                   <h2 className="font-semibold">{meal.label}</h2>
                 </div>
                 {row?.content ? (

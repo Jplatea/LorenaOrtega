@@ -45,6 +45,12 @@ import {
   LayoutGrid,
   List,
   Package,
+  Sunrise,
+  Apple,
+  Salad,
+  Coffee,
+  Soup,
+  Moon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -891,6 +897,16 @@ const DASH_CARDS: DashCard[] = [
   { label: "Recursos", desc: "Guías y materiales de apoyo.", icon: Activity, bg: "linear-gradient(150deg, #C6D3D8, #E4ECEF)" },
   { label: "Solicitudes", desc: "Reservas y mensajes recibidos.", icon: Inbox, bg: "linear-gradient(150deg, #F7C6C1, #FCE3E0)" },
 ];
+
+// Iconos de líneas (minimalistas, sin relleno) para cada tipo de comida.
+const MEAL_ICONS: Record<string, typeof Package> = {
+  desayuno: Sunrise,
+  media_manana: Apple,
+  almuerzo: Salad,
+  merienda: Coffee,
+  cena: Soup,
+  antes_dormir: Moon,
+};
 
 // Datos de contacto — EDITA estos valores con los reales de la clínica.
 const CONTACT = {
@@ -3331,11 +3347,17 @@ function RecipeEditor({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {MEALS.map((m) => (
-                <SelectItem key={m.id} value={m.id}>
-                  {m.emoji} {m.label}
-                </SelectItem>
-              ))}
+              {MEALS.map((m) => {
+                const Icon = MEAL_ICONS[m.id];
+                return (
+                  <SelectItem key={m.id} value={m.id}>
+                    <span className="flex items-center gap-2">
+                      {Icon && <Icon className="h-4 w-4 text-muted-foreground" aria-hidden />}
+                      {m.label}
+                    </span>
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         </div>
