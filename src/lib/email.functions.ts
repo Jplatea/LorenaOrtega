@@ -6,6 +6,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 // IONOS (hola@lorenaortega.es) por SMTP: sin terceros, y las respuestas de los
 // clientes llegan a esa misma bandeja.
 const CLIENT_WEB = "https://www.lorenaortega.es";
+const CHIRIMOYA_IMG = `${CLIENT_WEB}/images/email/chirimoya.jpg`;
 
 async function assertAdmin(supabase: any, userId: string) {
   const { data, error } = await supabase.rpc("has_role", { _user_id: userId, _role: "admin" });
@@ -51,55 +52,80 @@ function renderEmail({ subject, message }: { subject: string; message: string })
 </body></html>`;
 }
 
-// --- Tarjeta "dieta disponible" (fondo chirimoya, estilo tarjeta) ---------
-// La foto de la chirimoya se sirve desde la propia web
-// (public/images/email/chirimoya.jpg). Si todavía no está, queda el verde de
-// fondo (bgcolor) y la tarjeta se lee igual.
-const CHIRIMOYA_IMG = `${CLIENT_WEB}/images/email/chirimoya.jpg`;
+// --- Tarjeta "dieta disponible" (foto de chirimoya a sangre, tarjeta blanca
+//     con el texto y botón; VML para que Outlook también muestre el fondo).
+//     Misma estructura que la plantilla estándar de ILEADS, con la chirimoya.
+const CARD_BG = "#20382c";   // verde muy oscuro = fondo del hero
+const BRAND = "#5FB98E";     // botón
 
 function renderDietCard({ name }: { name: string }) {
-  const INK = "#2f3b34", SOFT = "#7c8a82", GREEN = "#5FB98E", CREAM = "#f6f4ef", LINE = "#e7e3da";
   const hello = `Estimad@${name ? " " + escapeHtml(name) : ""},`;
-  return `<!doctype html>
-<html lang="es" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word"><head>
-<meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
-<meta name="x-apple-disable-message-reformatting" /><meta name="color-scheme" content="light" />
-<title>Tu dieta ya está disponible</title>
-<!--[if !mso]><!--><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500&display=swap" rel="stylesheet" /><!--<![endif]-->
-<style>body,td,p,a,span,div,h1 { font-family:'Poppins','Century Gothic',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif; }</style>
-</head><body style="margin:0;padding:0;background:${CREAM};">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${CREAM};">
-    <tr><td align="center" style="padding:30px 12px 40px;">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:560px;max-width:100%;">
-        <tr><td align="center" style="padding:0 0 16px;font-size:17px;font-weight:500;color:${INK};">Lorena Ortega<span style="color:${GREEN};"> ·</span> <span style="font-weight:300;color:${SOFT};">Dietética</span></td></tr>
-        <tr><td style="background:#ffffff;border:1px solid ${LINE};border-radius:20px;overflow:hidden;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-            <tr>
-              <td align="center" style="background:#eef6f1;padding:32px 20px 24px;border-radius:20px 20px 0 0;">
-                <img src="${CHIRIMOYA_IMG}" width="210" alt="Chirimoya" style="width:210px;max-width:58%;height:auto;display:inline-block;border:0;outline:none;" />
-              </td>
-            </tr>
-            <tr><td style="padding:26px 36px 4px;">
-              <p style="margin:0 0 6px;font-size:10px;font-weight:500;letter-spacing:2.4px;text-transform:uppercase;color:${GREEN};">Tu plan</p>
-              <h1 style="margin:0 0 16px;font-size:26px;line-height:32px;font-weight:300;color:${INK};">Tu dieta ya está lista</h1>
-              <p style="margin:0 0 14px;font-size:16px;line-height:1.7;font-weight:400;color:${INK};">${hello}</p>
-              <p style="margin:0 0 22px;font-size:15px;line-height:1.75;font-weight:300;color:${INK};">Ya tienes disponible tu nueva dieta en tu área privada. Entra cuando quieras para verla por días, consultar las recetas y descargarla.</p>
+  const contentRows = (onImage: boolean) => `
+    <tr><td align="center" style="padding:${onImage ? "36px" : "26px"} 30px 0;">
+      <p style="margin:0;font-size:13px;font-weight:400;color:#eafaf2;letter-spacing:0.4px;">Tu plan de alimentación</p>
+      <p class="big" style="margin:6px 0 0;font-size:58px;line-height:62px;font-weight:300;color:#ffffff;letter-spacing:0.5px;">Tu dieta</p>
+    </td></tr>
+    <tr><td align="center" style="padding:24px 30px 0;">
+      <table role="presentation" class="note" width="80%" cellpadding="0" cellspacing="0" border="0" style="width:80%;background:#ffffff;border-radius:20px;">
+        <tr><td align="left" style="padding:20px 22px 12px;">
+          <p style="margin:0;font-size:10px;font-weight:600;letter-spacing:2px;color:${BRAND};">DIETA DISPONIBLE</p>
+          <p style="margin:4px 0 0;font-size:34px;line-height:38px;font-weight:300;color:#20382c;">&#10003;</p>
+        </td></tr>
+        <tr><td style="padding:0 14px 16px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f1f4f0;border-radius:14px;">
+            <tr><td align="left" style="padding:14px 16px 12px;">
+              <p style="margin:0 0 10px;font-size:14px;line-height:21px;color:#20382c;">${hello}</p>
+              <p style="margin:0 0 10px;font-size:14px;line-height:21px;color:#5b6b63;">Ya tienes disponible tu nueva dieta en tu área privada. Entra cuando quieras para verla por días, consultar las recetas y descargarla.</p>
+              <p style="margin:0;font-size:11px;color:${BRAND};">Ahora</p>
+              <p style="margin:6px 0 0;font-size:12px;font-weight:500;color:#20382c;">Lorena Ortega · Dietética</p>
             </td></tr>
-            <tr><td align="center" style="padding:0 34px 4px;">
-              <!--[if mso]><v:roundrect href="${CLIENT_WEB}" style="height:52px;v-text-anchor:middle;width:300px;" arcsize="50%" stroke="f" fillcolor="${GREEN}"><w:anchorlock/><center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;">Ver mi dieta</center></v:roundrect><![endif]-->
-              <!--[if !mso]><!-->
-              <table role="presentation" cellpadding="0" cellspacing="0"><tr><td align="center" style="border-radius:999px;background:${GREEN};">
-                <a href="${CLIENT_WEB}" style="display:inline-block;padding:14px 34px;font-size:15px;font-weight:500;color:#ffffff;text-decoration:none;letter-spacing:0.3px;">Ver mi dieta</a>
-              </td></tr></table>
-              <!--<![endif]-->
-            </td></tr>
-            <tr><td align="center" style="padding:14px 34px 0;">
-              <a href="${CLIENT_WEB}" style="font-size:12px;color:${SOFT};text-decoration:none;">${CLIENT_WEB.replace("https://", "")}</a>
-            </td></tr>
-            <tr><td height="28" style="height:28px;font-size:0;line-height:0;">&nbsp;</td></tr>
           </table>
         </td></tr>
-        <tr><td align="center" style="padding:16px 20px 0;font-size:11px;color:${SOFT};">Lorena Ortega · Dietética · hola@lorenaortega.es</td></tr>
+      </table>
+    </td></tr>
+    <tr><td align="center" style="padding:34px 30px 0;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+        <tr><td align="center" bgcolor="${BRAND}" style="background:${BRAND};border-radius:30px;">
+          <a href="${CLIENT_WEB}" style="display:inline-block;padding:16px 34px;font-size:15px;font-weight:500;color:#ffffff;text-decoration:none;letter-spacing:0.3px;">Entrar en mi área &nbsp;&rarr;</a>
+        </td></tr>
+      </table>
+    </td></tr>
+    <tr><td align="center" style="padding:16px 30px ${onImage ? "52px" : "44px"};">
+      <a href="${CLIENT_WEB}" style="font-size:12.5px;color:#eafaf2;text-decoration:underline;">Ver mi dieta</a>
+    </td></tr>`;
+
+  return `<!doctype html>
+<html lang="es"><head>
+<meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="x-apple-disable-message-reformatting" /><meta name="color-scheme" content="light" />
+<title>Tu dieta ya está disponible</title>
+<!--[if !mso]><!--><link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet" /><!--<![endif]-->
+<style>
+  body { margin:0; padding:0; width:100% !important; background:#f6f4ef; }
+  table { border-collapse:collapse; }
+  img { border:0; outline:none; text-decoration:none; display:block; }
+  td,p,a,span,div { font-family:'Poppins','Century Gothic',Helvetica,Arial,sans-serif; }
+  @media only screen and (max-width:620px) { .wrap { width:100% !important; } .big { font-size:46px !important; line-height:50px !important; } .note { width:90% !important; } }
+</style>
+</head><body style="margin:0;padding:0;background:#f6f4ef;">
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#f6f4ef;">Tu nueva dieta ya está disponible en tu área privada.&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f4ef;">
+    <tr><td align="center" style="padding:26px 12px 34px;">
+      <!--[if mso]>
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;">
+        <tr><td style="font-size:0;line-height:0;"><img src="${CHIRIMOYA_IMG}" width="600" alt="" style="width:600px;display:block;" /></td></tr>
+        <tr><td bgcolor="${CARD_BG}" style="background:${CARD_BG};"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${contentRows(false)}</table></td></tr>
+      </table>
+      <![endif]-->
+      <!--[if !mso]><!-->
+      <table role="presentation" class="wrap" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;">
+        <tr><td background="${CHIRIMOYA_IMG}" bgcolor="${CARD_BG}" valign="top" style="background-image:url('${CHIRIMOYA_IMG}');background-size:cover;background-position:center;background-color:${CARD_BG};border-radius:26px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${contentRows(true)}</table>
+        </td></tr>
+      </table>
+      <!--<![endif]-->
+      <table role="presentation" class="wrap" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;">
+        <tr><td align="center" style="padding:18px 20px 0;font-size:10px;line-height:17px;color:#7c8a82;">Lorena Ortega · Dietética · hola@lorenaortega.es</td></tr>
       </table>
     </td></tr>
   </table>
