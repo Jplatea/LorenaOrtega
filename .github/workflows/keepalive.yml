@@ -1,0 +1,24 @@
+name: Keep Supabase awake
+
+# Mantiene activo el proyecto de Supabase (free tier se pausa tras ~7 días sin
+# uso). Hace una petición mínima a la base de datos cada 2 días.
+on:
+  schedule:
+    - cron: "17 6 */2 * *" # cada 2 días, 06:17 UTC
+  workflow_dispatch: {} # permite lanzarlo a mano desde la pestaña Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping a la base de datos (registra actividad)
+        run: |
+          URL="https://detwqwwzlzyuboeejngp.supabase.co/rest/v1/products?select=id&limit=1"
+          KEY="sb_publishable_11hHpj1gJNYqdHrffALi5Q_jc5rQxVf"
+          code=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 30 "$URL" -H "apikey: $KEY")
+          echo "Respuesta HTTP del proyecto: $code"
+          if [ "$code" = "000" ]; then
+            echo "::error::El proyecto de Supabase no respondió (¿pausado/caído?)."
+            exit 1
+          fi
+          echo "OK — actividad registrada, el proyecto se mantiene despierto."
