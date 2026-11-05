@@ -77,7 +77,11 @@ async function syncOneAccount(
     .order("uid", { ascending: false }).limit(1).maybeSingle();
   const sinceUid: number = lastRow?.uid ?? 0;
 
-  const client = new ImapFlow({ host: acc.host, port: acc.port, secure: acc.port === 993, auth: { user: acc.user, pass: acc.pass }, logger: false });
+  const client = new ImapFlow({
+    host: acc.host, port: acc.port, secure: acc.port === 993,
+    auth: { user: acc.user, pass: acc.pass }, logger: false,
+    connectionTimeout: 6000, greetingTimeout: 5000, socketTimeout: 15000,
+  });
   let inserted = 0, updated = 0, fetched = 0, inboxTotal = 0;
   try {
     await client.connect();
@@ -165,52 +169,65 @@ export const syncInbox = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => (syncSchema.parse(d) ?? {}))
   .handler(async ({ data, context }) => {
-    await assertAdmin(context.supabase, context.userId);
-
     const logResult = async (summary: any) => {
       try { await context.supabase.from("mail_sync_log").insert({ result: summary }); } catch {}
       return summary;
     };
 
-    const accounts = mailAccounts();
-    if (accounts.length === 0) {
-      return logResult({
-        ok: false,
-        stage: "config",
-        error: "El correo no está configurado todavía (faltan las credenciales de los buzones en Vercel).",
-        accountsDetected: [],
-        envSeen: { SMTP_USER: !!process.env.SMTP_USER, SMTP_PASS: !!process.env.SMTP_PASS, MAIL2_USER: !!process.env.MAIL2_USER, MAIL2_PASS: !!process.env.MAIL2_PASS },
+    // Tope de tiempo por cuenta: si IMAP se cuelga, resolvemos con error en vez
+    // de dejar que la función de Vercel caduque sin registrar nada.
+    const withTimeout = (p: Promise<AccountResult>, acc: MailAccount, ms: number): Promise<AccountResult> =>
+      Promise.race([
+        p,
+        new Promise<AccountResult>((resolve) =>
+          setTimeout(() => resolve({ account: acc.id, ok: false, stage: "imap", error: `Tiempo de espera agotado (${ms / 1000}s) conectando a ${acc.host}.` }), ms),
+        ),
+      ]);
+
+    try {
+      await assertAdmin(context.supabase, context.userId);
+
+      const accounts = mailAccounts();
+      if (accounts.length === 0) {
+        return await logResult({
+          ok: false,
+          stage: "config",
+          error: "El correo no está configurado todavía (faltan las credenciales de los buzones en Vercel).",
+          accountsDetected: [],
+          envSeen: { SMTP_USER: !!process.env.SMTP_USER, SMTP_PASS: !!process.env.SMTP_PASS, MAIL2_USER: !!process.env.MAIL2_USER, MAIL2_PASS: !!process.env.MAIL2_PASS },
+        });
+      }
+
+      const want = data?.limit ?? 5;
+      const { ImapFlow } = await import("imapflow");
+      const { simpleParser } = await import("mailparser");
+
+      // Mapa email(minúsculas) -> client_id para vincular.
+      const { data: profs } = await context.supabase.from("profiles").select("id, email");
+      const byEmail = new Map<string, string>();
+      for (const p of profs ?? []) if (p.email) byEmail.set(String(p.email).trim().toLowerCase(), p.id);
+
+      const results: AccountResult[] = [];
+      for (const acc of accounts) {
+        results.push(await withTimeout(syncOneAccount(acc, context.supabase, byEmail, want, ImapFlow, simpleParser), acc, 8000));
+      }
+
+      const inserted = results.reduce((n, r) => n + (r.inserted ?? 0), 0);
+      const updated = results.reduce((n, r) => n + (r.updated ?? 0), 0);
+      const fetched = results.reduce((n, r) => n + (r.fetched ?? 0), 0);
+      const okAny = results.some((r) => r.ok);
+      const failed = results.filter((r) => !r.ok);
+
+      return await logResult({
+        ok: okAny,
+        inserted,
+        updated,
+        fetched,
+        accounts: results,
+        accountsDetected: accounts.map((a) => ({ id: a.id, host: a.host, port: a.port })),
+        error: failed.length ? failed.map((r) => `${r.account}: ${r.error}`).join(" · ") : undefined,
       });
+    } catch (e: any) {
+      return await logResult({ ok: false, stage: "fatal", error: String(e?.message || e).slice(0, 200) });
     }
-
-    const want = data?.limit ?? 60;
-    const { ImapFlow } = await import("imapflow");
-    const { simpleParser } = await import("mailparser");
-
-    // Mapa email(minúsculas) -> client_id para vincular.
-    const { data: profs } = await context.supabase.from("profiles").select("id, email");
-    const byEmail = new Map<string, string>();
-    for (const p of profs ?? []) if (p.email) byEmail.set(String(p.email).trim().toLowerCase(), p.id);
-
-    const results: AccountResult[] = [];
-    for (const acc of accounts) {
-      results.push(await syncOneAccount(acc, context.supabase, byEmail, want, ImapFlow, simpleParser));
-    }
-
-    const inserted = results.reduce((n, r) => n + (r.inserted ?? 0), 0);
-    const updated = results.reduce((n, r) => n + (r.updated ?? 0), 0);
-    const fetched = results.reduce((n, r) => n + (r.fetched ?? 0), 0);
-    const okAny = results.some((r) => r.ok);
-    const failed = results.filter((r) => !r.ok);
-
-    return logResult({
-      ok: okAny,
-      inserted,
-      updated,
-      fetched,
-      accounts: results,
-      accountsDetected: accounts.map((a) => ({ id: a.id, host: a.host, port: a.port })),
-      // Si alguna cuenta falló, lo resumimos para el aviso.
-      error: failed.length ? failed.map((r) => `${r.account}: ${r.error}`).join(" · ") : undefined,
-    });
   });
