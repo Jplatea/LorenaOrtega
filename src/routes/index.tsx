@@ -895,7 +895,7 @@ const DASH_CARDS: DashCard[] = [
   { label: "Dietas", desc: "Planes semanales por paciente.", icon: NotebookPen, bg: "linear-gradient(150deg, #E6E4E1, #F1EFEC)" },
   { label: "Recetas", desc: "Recetario por tipo de comida.", icon: BookOpen, bg: "linear-gradient(150deg, #FBD3AC, #FEE8D2)" },
   { label: "Productos", desc: "Alimentos e ingredientes para recetas.", icon: Package, bg: "linear-gradient(150deg, #E7D9F0, #F3EBF9)" },
-  { label: "Correos", desc: "Bandeja de hola@lorenaortega.es.", icon: Mail, bg: "linear-gradient(150deg, #CBD9EC, #E7EFF8)" },
+  { label: "Correos", desc: "Bandeja de correos.", icon: Mail, bg: "linear-gradient(150deg, #CBD9EC, #E7EFF8)" },
   { label: "Recursos", desc: "Guías y materiales de apoyo.", icon: Activity, bg: "linear-gradient(150deg, #C6D3D8, #E4ECEF)" },
   { label: "Solicitudes", desc: "Reservas y mensajes recibidos.", icon: Inbox, bg: "linear-gradient(150deg, #F7C6C1, #FCE3E0)" },
 ];
