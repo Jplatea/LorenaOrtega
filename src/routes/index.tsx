@@ -3060,53 +3060,45 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
                 <div key={m.id}
                   onClick={() => openEmail(m)}
                   className={cn(
-                    "group flex w-full cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-soft)]",
+                    "group flex w-full cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-1.5 text-left transition hover:shadow-[var(--shadow-soft)]",
                     m.seen && "border-border bg-card",
                   )}
                   style={m.seen ? undefined : { background: UNREAD.bg, borderColor: UNREAD.border }}>
-                  <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full", m.seen && "bg-primary-soft/60 text-foreground")}
-                    style={m.seen ? undefined : { background: UNREAD.accent, color: "#ffffff" }}>
-                    <span className="text-sm font-semibold">{(m.from_name || m.from_addr || "?").trim().charAt(0).toUpperCase()}</span>
+                  {!m.seen && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: UNREAD.accent }} />}
+                  <span className={cn("min-w-0 shrink-0 truncate text-[13px]", m.seen ? "w-40 font-medium text-foreground" : "w-40 font-semibold text-foreground")}>
+                    {m.from_name || m.from_addr || "(sin remitente)"}
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2">
-                      <span className={cn("truncate text-sm text-foreground", m.seen ? "font-medium" : "font-semibold")}>
-                        {m.from_name || m.from_addr || "(sin remitente)"}
-                      </span>
-                      {name && (
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
-                          style={{ background: UNREAD.accentSoft, color: UNREAD.accent }}>
-                          <User className="h-3 w-3" />{name}
-                        </span>
-                      )}
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
+                    <span className={cn(m.seen ? "text-foreground/80" : "font-medium text-foreground")}>{m.subject || "(sin asunto)"}</span>
+                  </span>
+                  {name && (
+                    <span className="hidden shrink-0 items-center gap-1 text-[11px] font-medium sm:inline-flex" style={{ color: UNREAD.accent }}>
+                      <User className="h-3 w-3" />{name}
                     </span>
-                    <span className="block truncate text-[13px] text-foreground">{m.subject || "(sin asunto)"}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{m.preview}</span>
-                  </span>
-                  {/* Acciones: responder / reenviar / borrar (visibles al pasar o en táctil). */}
-                  <span className="flex shrink-0 items-center gap-1 opacity-70 transition group-hover:opacity-100">
+                  )}
+                  {/* Acciones: responder / reenviar / borrar (al pasar el ratón). */}
+                  <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
                     <button type="button" aria-label="Responder" title="Responder"
                       onClick={(e) => { e.stopPropagation(); setCompose({ mode: "reply", email: m }); }}
-                      className="grid h-8 w-8 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-soft)] transition hover:text-foreground">
-                      <Reply className="h-4 w-4" />
+                      className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground transition hover:bg-card hover:text-foreground">
+                      <Reply className="h-3.5 w-3.5" />
                     </button>
                     <button type="button" aria-label="Reenviar" title="Reenviar"
                       onClick={(e) => { e.stopPropagation(); setCompose({ mode: "forward", email: m }); }}
-                      className="grid h-8 w-8 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-soft)] transition hover:text-foreground">
-                      <Forward className="h-4 w-4" />
+                      className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground transition hover:bg-card hover:text-foreground">
+                      <Forward className="h-3.5 w-3.5" />
                     </button>
                     <button type="button" aria-label="Borrar" title="Borrar"
                       onClick={(e) => { e.stopPropagation(); removeEmail(m); }}
-                      className="grid h-8 w-8 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-soft)] transition hover:bg-destructive/10 hover:text-destructive">
-                      <Trash2 className="h-4 w-4" />
+                      className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive">
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </span>
-                  <span className="flex shrink-0 flex-col items-end gap-1">
-                    <span className="text-[11px] text-muted-foreground">{fmtMailDate(m.date)}</span>
+                  <span className="flex shrink-0 items-center gap-2">
                     {(accounts?.length ?? 0) > 1 && acct === "all" && m.account && (
-                      <span className="max-w-[140px] truncate rounded-full bg-muted px-2 py-0.5 text-[9px] text-muted-foreground">{m.account}</span>
+                      <span className="truncate text-[11px] font-semibold tracking-tight" style={{ color: UNREAD.accent }}>{m.account.split("@")[0]}@</span>
                     )}
-                    {!m.seen && <span className="h-2 w-2 rounded-full" style={{ background: UNREAD.accent }} />}
+                    <span className="w-12 text-right text-[11px] text-muted-foreground">{fmtMailDate(m.date)}</span>
                   </span>
                 </div>
               );
