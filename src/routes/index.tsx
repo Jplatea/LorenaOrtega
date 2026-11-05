@@ -2638,6 +2638,7 @@ function ProductRow({ p, onEdit, onDelete }: { p: ProductItem; onEdit: () => voi
 // ===== Correos (bandeja de IONOS dentro de la web) =========================
 type EmailRow = {
   id: string;
+  account: string;
   folder: string;
   uid: number;
   direction: string;
@@ -2729,6 +2730,7 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [onlyUnread, setOnlyUnread] = useState(false);
+  const [acct, setAcct] = useState<string>("all");
   const [selected, setSelected] = useState<EmailRow | null>(null);
   const [syncing, setSyncing] = useState(false);
 
@@ -2737,15 +2739,24 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
     return () => clearTimeout(t);
   }, [search]);
 
+  const { data: accounts } = useQuery({
+    queryKey: ["correos-accounts"],
+    queryFn: async () => {
+      const { data } = await supabase.from("emails").select("account").eq("folder", "INBOX").limit(2000);
+      return [...new Set((data ?? []).map((r: any) => r.account).filter(Boolean))] as string[];
+    },
+  });
+
   const { data: emails, isLoading } = useQuery({
-    queryKey: ["correos-panel", debounced, onlyUnread],
+    queryKey: ["correos-panel", debounced, onlyUnread, acct],
     queryFn: async () => {
       let q = supabase
         .from("emails")
         .select(
-          "id, folder, uid, direction, from_name, from_addr, to_addrs, subject, date, preview, body_text, body_html, has_attachments, seen, answered, client_id, client:client_id(first_name,last_name,email)",
+          "id, account, folder, uid, direction, from_name, from_addr, to_addrs, subject, date, preview, body_text, body_html, has_attachments, seen, answered, client_id, client:client_id(first_name,last_name,email)",
         )
         .eq("folder", "INBOX");
+      if (acct !== "all") q = q.eq("account", acct);
       if (onlyUnread) q = q.eq("seen", false);
       const term = debounced.replace(/[%,()]/g, " ").trim();
       if (term) q = q.or(`subject.ilike.%${term}%,from_addr.ilike.%${term}%,from_name.ilike.%${term}%,preview.ilike.%${term}%`);
@@ -2766,16 +2777,20 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["correos-panel"] });
     qc.invalidateQueries({ queryKey: ["correos-unread"] });
+    qc.invalidateQueries({ queryKey: ["correos-accounts"] });
   };
 
   async function doSync() {
     setSyncing(true);
     try {
       const r: any = await syncFn({ data: {} });
+      const nIns = r?.inserted ?? 0;
       if (r?.ok) {
-        if ((r.inserted ?? 0) > 0) toast.success(`${r.inserted} correo${r.inserted === 1 ? "" : "s"} nuevo${r.inserted === 1 ? "" : "s"}`);
-        else toast.success("Bandeja al día", { description: "No hay correos nuevos." });
+        if (nIns > 0) toast.success(`${nIns} correo${nIns === 1 ? "" : "s"} nuevo${nIns === 1 ? "" : "s"}`, { description: r?.error ? `Aviso — ${r.error}` : undefined });
+        else toast.success("Bandeja al día", { description: r?.error ? `Aviso — ${r.error}` : "No hay correos nuevos." });
         refresh();
+        // Si alguna cuenta falló pese al éxito parcial, lo marcamos también en rojo.
+        if (r?.error) toast.error("Una cuenta no se pudo sincronizar", { description: r.error });
       } else {
         toast.error("No se pudo sincronizar", { description: r?.error ?? "Error desconocido" });
       }
@@ -2827,6 +2842,21 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
         </Button>
       </PanelToolbar>
 
+      {(accounts?.length ?? 0) > 1 && (
+        <div className="flex flex-wrap gap-1.5">
+          <button type="button" onClick={() => setAcct("all")}
+            className={cn("rounded-full border px-3 py-1 text-xs transition", acct === "all" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground")}>
+            Todos los buzones
+          </button>
+          {(accounts ?? []).map((a) => (
+            <button key={a} type="button" onClick={() => setAcct(a)}
+              className={cn("rounded-full border px-3 py-1 text-xs transition", acct === a ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground")}>
+              {a}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className={cn(fullscreen && "min-h-0 flex-1 overflow-y-auto pr-1")}>
         {isLoading ? (
           <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
@@ -2868,6 +2898,9 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
                   </span>
                   <span className="flex shrink-0 flex-col items-end gap-1">
                     <span className="text-[11px] text-muted-foreground">{fmtMailDate(m.date)}</span>
+                    {(accounts?.length ?? 0) > 1 && acct === "all" && m.account && (
+                      <span className="max-w-[140px] truncate rounded-full bg-muted px-2 py-0.5 text-[9px] text-muted-foreground">{m.account}</span>
+                    )}
                     {!m.seen && <span className="h-2 w-2 rounded-full bg-primary" />}
                   </span>
                 </button>
