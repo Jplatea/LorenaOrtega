@@ -66,6 +66,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { createPatient, resetPatientPassword, saveDietPdf, attachResourceToPatient } from "@/lib/patients.functions";
 import { sendDietAvailableEmail } from "@/lib/email.functions";
+import { syncInbox } from "@/lib/mail-inbox.functions";
 import { MEALS, DAYS } from "@/lib/domain";
 import { ensureIngredients, renderIngredients } from "@/lib/recipes";
 import { parseMeal, serializeMeal, renderMeal, type MealValue } from "@/lib/meal-options";
@@ -894,6 +895,7 @@ const DASH_CARDS: DashCard[] = [
   { label: "Dietas", desc: "Planes semanales por paciente.", icon: NotebookPen, bg: "linear-gradient(150deg, #E6E4E1, #F1EFEC)" },
   { label: "Recetas", desc: "Recetario por tipo de comida.", icon: BookOpen, bg: "linear-gradient(150deg, #FBD3AC, #FEE8D2)" },
   { label: "Productos", desc: "Alimentos e ingredientes para recetas.", icon: Package, bg: "linear-gradient(150deg, #E7D9F0, #F3EBF9)" },
+  { label: "Correos", desc: "Bandeja de hola@lorenaortega.es.", icon: Mail, bg: "linear-gradient(150deg, #CBD9EC, #E7EFF8)" },
   { label: "Recursos", desc: "Guías y materiales de apoyo.", icon: Activity, bg: "linear-gradient(150deg, #C6D3D8, #E4ECEF)" },
   { label: "Solicitudes", desc: "Reservas y mensajes recibidos.", icon: Inbox, bg: "linear-gradient(150deg, #F7C6C1, #FCE3E0)" },
 ];
@@ -2156,6 +2158,8 @@ function ExpandedCard({
           <RecetasPanel fullscreen={fullscreen} onClose={onClose} />
         ) : card.label === "Productos" ? (
           <ProductosPanel fullscreen={fullscreen} onClose={onClose} />
+        ) : card.label === "Correos" ? (
+          <CorreosPanel fullscreen={fullscreen} onClose={onClose} />
         ) : card.label === "Dietas" ? (
           <DietasPanel fullscreen={fullscreen} onClose={onClose} />
         ) : card.label === "Recursos" ? (
@@ -2626,6 +2630,251 @@ function ProductRow({ p, onEdit, onDelete }: { p: ProductItem; onEdit: () => voi
             <Icon className="h-3.5 w-3.5" />
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ===== Correos (bandeja de IONOS dentro de la web) =========================
+type EmailRow = {
+  id: string;
+  folder: string;
+  uid: number;
+  direction: string;
+  from_name: string | null;
+  from_addr: string | null;
+  to_addrs: string[];
+  subject: string;
+  date: string | null;
+  preview: string | null;
+  body_text: string | null;
+  body_html: string | null;
+  has_attachments: boolean;
+  seen: boolean;
+  answered: boolean;
+  client_id: string | null;
+  client?: { first_name: string | null; last_name: string | null; email: string | null } | null;
+};
+
+function fmtMailDate(iso: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return sameDay
+    ? d.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleDateString("es", { day: "2-digit", month: "short" });
+}
+
+function mailClientName(m: EmailRow): string | null {
+  const c = m.client;
+  if (!c) return null;
+  const n = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
+  return n || c.email || null;
+}
+
+function EmailReader({
+  m, clientName, fullscreen, onBack, onClose,
+}: { m: EmailRow; clientName: string | null; fullscreen: boolean; onBack: () => void; onClose: () => void }) {
+  return (
+    <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onBack} aria-label="Volver"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-soft)] transition hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <div className="min-w-0 flex-1" />
+        {onClose && (
+          <button type="button" onClick={onClose} aria-label="Cerrar"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+      <div className={cn("space-y-4", fullscreen && "min-h-0 flex-1 overflow-y-auto pr-1")}>
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-[var(--shadow-soft)]">
+          <h3 className="text-lg font-semibold text-foreground">{m.subject || "(sin asunto)"}</h3>
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+            <span className="font-medium text-foreground">{m.from_name || m.from_addr}</span>
+            {m.from_name && m.from_addr && <span className="text-muted-foreground">&lt;{m.from_addr}&gt;</span>}
+            {clientName && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                <User className="h-3 w-3" />{clientName}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Para: {(m.to_addrs || []).join(", ") || "—"}
+            {m.date ? ` · ${new Date(m.date).toLocaleString("es")}` : ""}
+          </p>
+        </div>
+        <div className="overflow-hidden rounded-2xl border border-border bg-white p-1">
+          {m.body_html ? (
+            <iframe title="Contenido del correo" sandbox="" srcDoc={m.body_html}
+              className={cn("w-full rounded-xl border-0 bg-white", fullscreen ? "h-[58vh]" : "h-[46vh]")} />
+          ) : (
+            <pre className="whitespace-pre-wrap break-words p-4 font-sans text-sm leading-relaxed text-foreground">
+              {m.body_text || "(sin contenido)"}
+            </pre>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: () => void }) {
+  const qc = useQueryClient();
+  const syncFn = useServerFn(syncInbox);
+  const [search, setSearch] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const [onlyUnread, setOnlyUnread] = useState(false);
+  const [selected, setSelected] = useState<EmailRow | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const { data: emails, isLoading } = useQuery({
+    queryKey: ["correos-panel", debounced, onlyUnread],
+    queryFn: async () => {
+      let q = supabase
+        .from("emails")
+        .select(
+          "id, folder, uid, direction, from_name, from_addr, to_addrs, subject, date, preview, body_text, body_html, has_attachments, seen, answered, client_id, client:client_id(first_name,last_name,email)",
+        )
+        .eq("folder", "INBOX");
+      if (onlyUnread) q = q.eq("seen", false);
+      const term = debounced.replace(/[%,()]/g, " ").trim();
+      if (term) q = q.or(`subject.ilike.%${term}%,from_addr.ilike.%${term}%,from_name.ilike.%${term}%,preview.ilike.%${term}%`);
+      const { data } = await q.order("date", { ascending: false, nullsFirst: false }).limit(300);
+      return (data ?? []) as unknown as EmailRow[];
+    },
+  });
+
+  const { data: unreadCount } = useQuery({
+    queryKey: ["correos-unread"],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from("emails").select("id", { count: "exact", head: true }).eq("folder", "INBOX").eq("seen", false);
+      return count ?? 0;
+    },
+  });
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["correos-panel"] });
+    qc.invalidateQueries({ queryKey: ["correos-unread"] });
+  };
+
+  async function doSync() {
+    setSyncing(true);
+    try {
+      const r: any = await syncFn({ data: {} });
+      if (r?.ok) {
+        if ((r.inserted ?? 0) > 0) toast.success(`${r.inserted} correo${r.inserted === 1 ? "" : "s"} nuevo${r.inserted === 1 ? "" : "s"}`);
+        else toast.success("Bandeja al día", { description: "No hay correos nuevos." });
+        refresh();
+      } else {
+        toast.error("No se pudo sincronizar", { description: r?.error ?? "Error desconocido" });
+      }
+    } catch (e) {
+      toast.error("No se pudo sincronizar", { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function openEmail(m: EmailRow) {
+    setSelected(m);
+    if (!m.seen) {
+      await supabase.from("emails").update({ seen: true }).eq("id", m.id);
+      refresh();
+    }
+  }
+
+  if (selected) {
+    return (
+      <EmailReader
+        m={selected}
+        clientName={mailClientName(selected)}
+        fullscreen={fullscreen}
+        onBack={() => setSelected(null)}
+        onClose={onClose}
+      />
+    );
+  }
+
+  const list = emails ?? [];
+
+  return (
+    <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
+      <PanelToolbar
+        info={`Bandeja de entrada${unreadCount ? ` · ${unreadCount} sin leer` : ""}`}
+        search={search}
+        setSearch={setSearch}
+        searchPlaceholder="Buscar en correos…"
+        onClose={onClose}
+      >
+        <button type="button" onClick={() => setOnlyUnread((v) => !v)}
+          className={cn("h-9 shrink-0 rounded-full border px-3 text-xs transition",
+            onlyUnread ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground")}>
+          Sin leer
+        </button>
+        <Button type="button" size="sm" onClick={doSync} disabled={syncing} className="h-9 shrink-0">
+          {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Sincronizar
+        </Button>
+      </PanelToolbar>
+
+      <div className={cn(fullscreen && "min-h-0 flex-1 overflow-y-auto pr-1")}>
+        {isLoading ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
+        ) : list.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-12 text-center">
+            <span className="grid h-12 w-12 place-items-center rounded-full bg-primary-soft text-foreground"><Inbox className="h-6 w-6" /></span>
+            <p className="text-sm text-muted-foreground">
+              La bandeja está vacía.<br />
+              Pulsa <span className="font-medium text-foreground">Sincronizar</span> para traer los correos de IONOS.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {list.map((m) => {
+              const name = mailClientName(m);
+              return (
+                <button key={m.id} type="button" onClick={() => openEmail(m)}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-soft)]",
+                    m.seen ? "border-border bg-card" : "border-primary/40 bg-primary-soft/40",
+                  )}>
+                  <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full",
+                    m.seen ? "bg-primary-soft/60 text-foreground" : "bg-primary text-primary-foreground")}>
+                    <span className="text-sm font-semibold">{(m.from_name || m.from_addr || "?").trim().charAt(0).toUpperCase()}</span>
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className={cn("truncate text-sm text-foreground", m.seen ? "font-medium" : "font-semibold")}>
+                        {m.from_name || m.from_addr || "(sin remitente)"}
+                      </span>
+                      {name && (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                          <User className="h-3 w-3" />{name}
+                        </span>
+                      )}
+                    </span>
+                    <span className="block truncate text-[13px] text-foreground">{m.subject || "(sin asunto)"}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{m.preview}</span>
+                  </span>
+                  <span className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="text-[11px] text-muted-foreground">{fmtMailDate(m.date)}</span>
+                    {!m.seen && <span className="h-2 w-2 rounded-full bg-primary" />}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
