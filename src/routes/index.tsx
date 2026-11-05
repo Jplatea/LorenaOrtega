@@ -2684,10 +2684,26 @@ const UNREAD = {
   border: "#EDC7E4",
   accent: "#C85BAE",
   accentSoft: "#F4E1EF",
+  dot: "#B07A4E", // punto de no leído en tono tierra (terracota)
 };
 
 function stripSubjectPrefix(s: string | undefined): string {
   return String(s || "").replace(/^(\s*(re|rv|fwd|fw|reenv)\s*:\s*)+/i, "").trim();
+}
+
+// Etiqueta corta de buzón: la parte antes de la @ (p.ej. "hola@", "lorena@").
+function shortBox(a: string): string {
+  return a === "all" ? "Todos" : `${String(a).split("@")[0]}@`;
+}
+
+// Silueta de manzana (verde muy clara) para la marca de agua del previsualizador.
+function AppleMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z" />
+      <path d="M11.3 2.2c.9.5 1.7 1.7 1.8 3.9-2.1.1-3.3-1-3.6-2.1-.2-.9.9-2.2 1.8-1.8Z" opacity="0.85" />
+    </svg>
+  );
 }
 
 // Documento uniforme para leer cualquier correo: misma tipografía (Poppins),
@@ -2908,14 +2924,17 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
     },
   });
 
-  const { data: unreadCount } = useQuery({
+  const { data: unread } = useQuery({
     queryKey: ["correos-unread"],
     queryFn: async () => {
-      const { count } = await supabase
-        .from("emails").select("id", { count: "exact", head: true }).eq("folder", "INBOX").eq("seen", false);
-      return count ?? 0;
+      const { data } = await supabase
+        .from("emails").select("account").eq("folder", "INBOX").eq("seen", false).limit(5000);
+      const byAccount: Record<string, number> = {};
+      for (const r of (data ?? []) as any[]) byAccount[r.account] = (byAccount[r.account] ?? 0) + 1;
+      return { total: (data ?? []).length, byAccount };
     },
   });
+  const unreadFor = (a: string) => (a === "all" ? unread?.total ?? 0 : unread?.byAccount?.[a] ?? 0);
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["correos-panel"] });
@@ -2977,134 +2996,159 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
     }
   }
 
-  if (compose) {
-    return (
-      <ComposeMail
-        mode={compose.mode}
-        email={compose.email}
-        fullscreen={fullscreen}
-        onBack={() => setCompose(null)}
-        onClose={onClose}
-        onSent={() => { setCompose(null); setSelected(null); refresh(); }}
-      />
-    );
-  }
-
-  if (selected) {
-    return (
-      <EmailReader
-        m={selected}
-        clientName={mailClientName(selected)}
-        fullscreen={fullscreen}
-        onBack={() => setSelected(null)}
-        onClose={onClose}
-        onReply={() => setCompose({ mode: "reply", email: selected })}
-        onForward={() => setCompose({ mode: "forward", email: selected })}
-        onDelete={() => removeEmail(selected)}
-      />
-    );
-  }
-
   const list = emails ?? [];
+  const filters = ["all", ...(accounts ?? [])];
+
+  const rightPane = compose ? (
+    <ComposeMail
+      mode={compose.mode}
+      email={compose.email}
+      fullscreen={fullscreen}
+      onBack={() => setCompose(null)}
+      onClose={onClose}
+      onSent={() => { setCompose(null); setSelected(null); refresh(); }}
+    />
+  ) : selected ? (
+    <EmailReader
+      m={selected}
+      clientName={mailClientName(selected)}
+      fullscreen={fullscreen}
+      onBack={() => setSelected(null)}
+      onClose={onClose}
+      onReply={() => setCompose({ mode: "reply", email: selected })}
+      onForward={() => setCompose({ mode: "forward", email: selected })}
+      onDelete={() => removeEmail(selected)}
+    />
+  ) : (
+    <div className="flex h-full min-h-[280px] items-center justify-center rounded-[10px] border border-border bg-card/40">
+      <AppleMark className="h-40 w-40 text-[#DEEBD7]" />
+    </div>
+  );
 
   return (
-    <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
-      <PanelToolbar
-        info={`Bandeja de entrada${unreadCount ? ` · ${unreadCount} sin leer` : ""}`}
-        search={search}
-        setSearch={setSearch}
-        searchPlaceholder="Buscar en correos…"
-        onClose={onClose}
-      >
-        <button type="button" onClick={() => setOnlyUnread((v) => !v)}
-          className={cn("h-9 shrink-0 rounded-full border px-3 text-xs transition",
-            onlyUnread ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground")}>
-          Sin leer
-        </button>
-        <Button type="button" size="sm" onClick={() => doSync()} disabled={syncing} className="h-9 shrink-0">
-          {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Sincronizar
-        </Button>
-      </PanelToolbar>
-
-      {(accounts?.length ?? 0) > 1 && (
-        <div className="flex flex-wrap gap-1.5">
-          <button type="button" onClick={() => setAcct("all")}
-            className={cn("rounded-full border px-3 py-1 text-xs transition", acct === "all" ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground")}>
-            Todos los buzones
-          </button>
-          {(accounts ?? []).map((a) => (
-            <button key={a} type="button" onClick={() => setAcct(a)}
-              className={cn("rounded-full border px-3 py-1 text-xs transition", acct === a ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground")}>
-              {a}
-            </button>
-          ))}
+    <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col gap-3" : "space-y-3")}>
+      {/* Cabecera: buzones + contadores (izq) · buscador centrado · acciones (der) */}
+      <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-1.5">
+          {filters.map((a) => {
+            const active = acct === a;
+            const n = unreadFor(a);
+            return (
+              <button key={a} type="button" onClick={() => setAcct(a)}
+                className={cn("flex h-9 items-center rounded-full border px-3 text-xs transition",
+                  active ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground")}>
+                {shortBox(a)}
+                {n > 0 && (
+                  <span className="ml-1.5 inline-flex h-[17px] min-w-[17px] items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none"
+                    style={{ background: active ? "#ffffff" : UNREAD.accent, color: active ? UNREAD.accent : "#ffffff" }}>
+                    {n}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
-      )}
 
-      <div className={cn(fullscreen && "min-h-0 flex-1 overflow-y-auto pr-1")}>
-        {isLoading ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
-        ) : list.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-12 text-center">
-            <span className="grid h-12 w-12 place-items-center rounded-full bg-primary-soft text-foreground"><Inbox className="h-6 w-6" /></span>
-            <p className="text-sm text-muted-foreground">
-              La bandeja está vacía.<br />
-              Pulsa <span className="font-medium text-foreground">Sincronizar</span> para traer los correos de IONOS.
-            </p>
+        <div className="flex min-w-0 flex-1 justify-center">
+          <div className="relative w-full max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar en correos…"
+              className="h-9 w-full rounded-full border border-border bg-card pl-9 pr-3 text-sm text-foreground shadow-[var(--shadow-soft)] outline-none placeholder:text-muted-foreground focus:border-primary" />
           </div>
-        ) : (
-          <div className="space-y-1">
-            {list.map((m) => {
-              const name = mailClientName(m);
-              return (
-                <div key={m.id}
-                  onClick={() => openEmail(m)}
-                  className={cn(
-                    "group flex w-full cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-1.5 text-left transition hover:shadow-[var(--shadow-soft)]",
-                    m.seen && "border-border bg-card",
-                  )}
-                  style={m.seen ? undefined : { background: UNREAD.bg, borderColor: UNREAD.border }}>
-                  {!m.seen && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: UNREAD.accent }} />}
-                  <span className={cn("min-w-0 shrink-0 truncate text-[13px]", m.seen ? "w-40 font-medium text-foreground" : "w-40 font-semibold text-foreground")}>
-                    {m.from_name || m.from_addr || "(sin remitente)"}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground">
-                    <span className={cn(m.seen ? "text-foreground/80" : "font-medium text-foreground")}>{m.subject || "(sin asunto)"}</span>
-                  </span>
-                  {name && (
-                    <span className="hidden shrink-0 items-center gap-1 text-[11px] font-medium sm:inline-flex" style={{ color: UNREAD.accent }}>
-                      <User className="h-3 w-3" />{name}
-                    </span>
-                  )}
-                  {/* Acciones: responder / reenviar / borrar (al pasar el ratón). */}
-                  <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
-                    <button type="button" aria-label="Responder" title="Responder"
-                      onClick={(e) => { e.stopPropagation(); setCompose({ mode: "reply", email: m }); }}
-                      className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground transition hover:bg-card hover:text-foreground">
-                      <Reply className="h-3.5 w-3.5" />
-                    </button>
-                    <button type="button" aria-label="Reenviar" title="Reenviar"
-                      onClick={(e) => { e.stopPropagation(); setCompose({ mode: "forward", email: m }); }}
-                      className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground transition hover:bg-card hover:text-foreground">
-                      <Forward className="h-3.5 w-3.5" />
-                    </button>
-                    <button type="button" aria-label="Borrar" title="Borrar"
-                      onClick={(e) => { e.stopPropagation(); removeEmail(m); }}
-                      className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    {(accounts?.length ?? 0) > 1 && acct === "all" && m.account && (
-                      <span className="truncate text-[11px] font-semibold tracking-tight" style={{ color: UNREAD.accent }}>{m.account.split("@")[0]}@</span>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <button type="button" onClick={() => setOnlyUnread((v) => !v)}
+            className={cn("h-9 rounded-full border px-3 text-xs transition",
+              onlyUnread ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground")}>
+            Sin leer
+          </button>
+          <Button type="button" size="sm" onClick={() => doSync()} disabled={syncing} className="h-9 shrink-0">
+            {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Sincronizar
+          </Button>
+          {onClose && (
+            <button type="button" onClick={onClose} aria-label="Cerrar"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Dos paneles: lista (izq) · previsualización (der) */}
+      <div className={cn("flex flex-col gap-3 lg:flex-row", fullscreen && "min-h-0 flex-1")}>
+        <div className={cn("flex min-h-0 flex-col lg:w-[44%] lg:max-w-[540px]")}>
+          <div className={cn("space-y-1 overflow-y-auto pr-1", fullscreen ? "min-h-0 flex-1" : "max-h-[46vh]")}>
+            {isLoading ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">Cargando…</p>
+            ) : list.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 py-12 text-center">
+                <span className="grid h-12 w-12 place-items-center rounded-full bg-primary-soft text-foreground"><Inbox className="h-6 w-6" /></span>
+                <p className="text-sm text-muted-foreground">
+                  La bandeja está vacía.<br />
+                  Pulsa <span className="font-medium text-foreground">Sincronizar</span> para traer los correos.
+                </p>
+              </div>
+            ) : (
+              list.map((m) => {
+                const name = mailClientName(m);
+                const isSel = selected?.id === m.id;
+                return (
+                  <div key={m.id}
+                    onClick={() => openEmail(m)}
+                    className={cn(
+                      "group flex w-full cursor-pointer items-center gap-2 rounded-xl border px-3 py-1.5 text-left transition hover:shadow-[var(--shadow-soft)]",
+                      m.seen && "border-border bg-card",
+                      isSel && "ring-2 ring-primary/40",
                     )}
-                    <span className="w-12 text-right text-[11px] text-muted-foreground">{fmtMailDate(m.date)}</span>
-                  </span>
-                </div>
-              );
-            })}
+                    style={m.seen ? undefined : { background: UNREAD.bg, borderColor: UNREAD.border }}>
+                    {!m.seen && <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: UNREAD.dot }} />}
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className={cn("truncate text-[13px] text-foreground", m.seen ? "font-medium" : "font-semibold")}>
+                          {m.from_name || m.from_addr || "(sin remitente)"}
+                        </span>
+                        {name && (
+                          <span className="hidden shrink-0 items-center gap-0.5 text-[10px] font-medium lg:inline-flex" style={{ color: UNREAD.accent }}>
+                            <User className="h-3 w-3" />{name}
+                          </span>
+                        )}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        <span className={cn(m.seen ? "" : "font-medium text-foreground")}>{m.subject || "(sin asunto)"}</span>
+                      </span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+                      <button type="button" aria-label="Responder" title="Responder"
+                        onClick={(e) => { e.stopPropagation(); setCompose({ mode: "reply", email: m }); }}
+                        className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground transition hover:bg-card hover:text-foreground">
+                        <Reply className="h-3.5 w-3.5" />
+                      </button>
+                      <button type="button" aria-label="Reenviar" title="Reenviar"
+                        onClick={(e) => { e.stopPropagation(); setCompose({ mode: "forward", email: m }); }}
+                        className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground transition hover:bg-card hover:text-foreground">
+                        <Forward className="h-3.5 w-3.5" />
+                      </button>
+                      <button type="button" aria-label="Borrar" title="Borrar"
+                        onClick={(e) => { e.stopPropagation(); removeEmail(m); }}
+                        className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
+                    {acct === "all" && (accounts?.length ?? 0) > 1 && m.account && (
+                      <span className="hidden shrink-0 text-[10px] font-semibold sm:inline" style={{ color: "#3F4A44" }}>{shortBox(m.account)}</span>
+                    )}
+                    <span className="w-11 shrink-0 text-right text-[11px] text-muted-foreground">{fmtMailDate(m.date)}</span>
+                  </div>
+                );
+              })
+            )}
           </div>
-        )}
+        </div>
+
+        <div className={cn("min-h-0 lg:flex-1", fullscreen && "flex flex-1 flex-col")}>
+          {rightPane}
+        </div>
       </div>
     </div>
   );

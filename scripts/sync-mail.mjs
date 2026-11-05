@@ -10,8 +10,10 @@ import { createClient } from "@supabase/supabase-js";
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!SUPABASE_URL || !SERVICE_KEY) {
-  console.error("Faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY");
-  process.exit(1);
+  // Salida suave: aún no se han configurado los secretos en GitHub. No fallamos
+  // el job para no mandar avisos de error; en cuanto estén, sincroniza.
+  console.log("Pendiente de configurar: faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY (añade los secretos en GitHub).");
+  process.exit(0);
 }
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
@@ -105,7 +107,7 @@ async function syncOne(acc, byEmail, want) {
 
 async function main() {
   const accs = accounts();
-  if (accs.length === 0) { console.error("No hay cuentas configuradas (SMTP_USER/PASS, MAIL2_USER/PASS)"); process.exit(1); }
+  if (accs.length === 0) { console.log("Pendiente: faltan credenciales de buzón (SMTP_PASS / MAIL2_PASS en secretos)."); process.exit(0); }
 
   const { data: profs } = await supabase.from("profiles").select("id, email");
   const byEmail = new Map();
