@@ -903,6 +903,17 @@ const DASH_CARDS: DashCard[] = [
   { label: "Solicitudes", desc: "Reservas y mensajes recibidos.", icon: Inbox, bg: "linear-gradient(150deg, #F7C6C1, #FCE3E0)" },
 ];
 
+// Fondo compartido por TODAS las secciones abiertas: blanco con un fundido
+// (aurora) muy sutil que mezcla los colores de cada sección. Uniforme y claro,
+// para que el contenido y la marca de agua se lean bien.
+const SECTION_BG =
+  "radial-gradient(1200px 760px at 10% 6%, rgba(203,217,236,0.42), transparent 60%)," +
+  "radial-gradient(1100px 720px at 90% 4%, rgba(251,211,172,0.38), transparent 60%)," +
+  "radial-gradient(1200px 800px at 94% 94%, rgba(231,217,240,0.40), transparent 62%)," +
+  "radial-gradient(1100px 760px at 6% 96%, rgba(211,226,209,0.42), transparent 62%)," +
+  "radial-gradient(900px 640px at 50% 52%, rgba(247,198,193,0.20), transparent 66%)," +
+  "#FFFFFF";
+
 // Iconos de líneas (minimalistas, sin relleno) para cada tipo de comida.
 const MEAL_ICONS: Record<string, typeof Package> = {
   desayuno: Sunrise,
@@ -1919,7 +1930,7 @@ function DashboardCards({
                 "relative overflow-hidden border border-black/5 shadow-[var(--shadow-float)] transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
                 isOpen ? "fixed inset-0 z-[55] rounded-none border-0" : "rounded-3xl md:flex-1",
               )}
-              style={{ background: c.bg }}
+              style={{ background: isOpen ? SECTION_BG : c.bg }}
             >
               {isOpen ? (
                 <ExpandedCard card={c} onClose={closeCard} fullscreen={fullscreen} />
@@ -3024,7 +3035,7 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
     />
   ) : (
     <div className="flex h-full min-h-[280px] items-center justify-center rounded-[10px] border border-border bg-card/40">
-      <PeachMark className="h-44 w-44 text-[#EDF2F9]" />
+      <PeachMark className="h-44 w-44 text-[#F2DCC9]" />
     </div>
   );
 
