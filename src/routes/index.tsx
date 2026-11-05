@@ -2697,12 +2697,14 @@ function shortBox(a: string): string {
   return a === "all" ? "Todos" : `${String(a).split("@")[0]}@`;
 }
 
-// Silueta de manzana (verde muy clara) para la marca de agua del previsualizador.
-function AppleMark({ className }: { className?: string }) {
+// Silueta de melocotón para la marca de agua del previsualizador. El color se
+// hereda (currentColor) para poder tintarla casi blanca con el fondo de la sección.
+function PeachMark({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-      <path d="M12 20.94c1.5 0 2.75 1.06 4 1.06 3 0 6-8 6-12.22A4.91 4.91 0 0 0 17 5c-2.22 0-4 1.44-5 2-1-.56-2.78-2-5-2a4.9 4.9 0 0 0-5 4.78C2 14 5 22 8 22c1.25 0 2.5-1.06 4-1.06Z" />
-      <path d="M11.3 2.2c.9.5 1.7 1.7 1.8 3.9-2.1.1-3.3-1-3.6-2.1-.2-.9.9-2.2 1.8-1.8Z" opacity="0.85" />
+      <path d="M12 7.3C11.2 5.9 9.6 5.2 8 5.6 5.4 6.3 4 9 4 12c0 4.4 3.6 8 8 8s8-3.6 8-8c0-3-1.4-5.7-4-6.4-1.6-.4-3.2.3-4 1.7Z" />
+      <path d="M12.4 6c.8-1.6 2.6-2.3 4.2-1.8-.6 1.6-2.4 2.4-4.2 1.8Z" opacity="0.9" />
+      <path d="M12 7.6c-.8 3.4-.8 8.4 0 12" fill="none" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" opacity="0.5" />
     </svg>
   );
 }
@@ -3022,7 +3024,7 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
     />
   ) : (
     <div className="flex h-full min-h-[280px] items-center justify-center rounded-[10px] border border-border bg-card/40">
-      <AppleMark className="h-40 w-40 text-[#DEEBD7]" />
+      <PeachMark className="h-44 w-44 text-[#EDF2F9]" />
     </div>
   );
 
