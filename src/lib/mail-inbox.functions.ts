@@ -167,9 +167,20 @@ export const syncInbox = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await assertAdmin(context.supabase, context.userId);
 
+    const logResult = async (summary: any) => {
+      try { await context.supabase.from("mail_sync_log").insert({ result: summary }); } catch {}
+      return summary;
+    };
+
     const accounts = mailAccounts();
     if (accounts.length === 0) {
-      return { ok: false, stage: "config" as const, error: "El correo no está configurado todavía (faltan las credenciales de los buzones en Vercel)." };
+      return logResult({
+        ok: false,
+        stage: "config",
+        error: "El correo no está configurado todavía (faltan las credenciales de los buzones en Vercel).",
+        accountsDetected: [],
+        envSeen: { SMTP_USER: !!process.env.SMTP_USER, SMTP_PASS: !!process.env.SMTP_PASS, MAIL2_USER: !!process.env.MAIL2_USER, MAIL2_PASS: !!process.env.MAIL2_PASS },
+      });
     }
 
     const want = data?.limit ?? 60;
@@ -192,13 +203,14 @@ export const syncInbox = createServerFn({ method: "POST" })
     const okAny = results.some((r) => r.ok);
     const failed = results.filter((r) => !r.ok);
 
-    return {
+    return logResult({
       ok: okAny,
       inserted,
       updated,
       fetched,
       accounts: results,
+      accountsDetected: accounts.map((a) => ({ id: a.id, host: a.host, port: a.port })),
       // Si alguna cuenta falló, lo resumimos para el aviso.
       error: failed.length ? failed.map((r) => `${r.account}: ${r.error}`).join(" · ") : undefined,
-    };
+    });
   });
