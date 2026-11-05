@@ -2680,11 +2680,12 @@ function mailClientName(m: EmailRow): string | null {
 // Color morado-rosado para destacar los correos no leídos (resalta sobre el
 // fondo claro mucho mejor que el verde de la marca).
 const UNREAD = {
-  bg: "#FBEAF4",
-  border: "#EDC7E4",
-  accent: "#C85BAE",
-  accentSoft: "#F4E1EF",
-  dot: "#B07A4E", // punto de no leído en tono tierra (terracota)
+  // Morado tierra (apagado, nada neón): mismo tono para puntos y contadores.
+  bg: "#F1ECF4",
+  border: "#DCD0E3",
+  accent: "#8A6F97",
+  accentSoft: "#EBE1EF",
+  dot: "#8A6F97",
 };
 
 function stripSubjectPrefix(s: string | undefined): string {
