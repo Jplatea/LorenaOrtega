@@ -51,6 +51,8 @@ import {
   Coffee,
   Soup,
   Moon,
+  Reply,
+  Forward,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -67,6 +69,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { createPatient, resetPatientPassword, saveDietPdf, attachResourceToPatient } from "@/lib/patients.functions";
 import { sendDietAvailableEmail } from "@/lib/email.functions";
 import { syncInbox } from "@/lib/mail-inbox.functions";
+import { sendMailFrom, deleteEmail } from "@/lib/mail-actions.functions";
 import { MEALS, DAYS } from "@/lib/domain";
 import { ensureIngredients, renderIngredients } from "@/lib/recipes";
 import { parseMeal, serializeMeal, renderMeal, type MealValue } from "@/lib/meal-options";
@@ -2674,9 +2677,142 @@ function mailClientName(m: EmailRow): string | null {
   return n || c.email || null;
 }
 
+// Color morado-rosado para destacar los correos no leídos (resalta sobre el
+// fondo claro mucho mejor que el verde de la marca).
+const UNREAD = {
+  bg: "#FBEAF4",
+  border: "#EDC7E4",
+  accent: "#C85BAE",
+  accentSoft: "#F4E1EF",
+};
+
+function stripSubjectPrefix(s: string | undefined): string {
+  return String(s || "").replace(/^(\s*(re|rv|fwd|fw|reenv)\s*:\s*)+/i, "").trim();
+}
+
+// Documento uniforme para leer cualquier correo: misma tipografía (Poppins),
+// mismos márgenes y colores, imágenes conservadas y adaptadas al ancho. Se
+// pinta dentro de un iframe aislado (sandbox) por seguridad.
+function buildEmailDoc(m: EmailRow): string {
+  let inner: string;
+  if (m.body_html) {
+    inner = m.body_html;
+  } else {
+    const esc = String(m.body_text || "(sin contenido)")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/\r?\n/g, "<br>");
+    inner = `<div>${esc}</div>`;
+  }
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin:0; padding:18px; background:#ffffff; }
+  *, *::before, *::after { font-family:'Poppins','Century Gothic',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif !important; box-sizing:border-box; }
+  body { font-size:14px; line-height:1.7; font-weight:300; color:#2f3b34; -webkit-text-size-adjust:100%; word-break:break-word; }
+  img { max-width:100% !important; height:auto !important; border-radius:6px; }
+  table { max-width:100% !important; width:auto !important; border-collapse:collapse; }
+  td, th { word-break:break-word; }
+  a { color:#3f8a66; }
+  h1,h2,h3,h4 { font-weight:500; line-height:1.3; }
+  blockquote { border-left:3px solid #e7e3da; margin:8px 0; padding:2px 0 2px 12px; color:#7c8a82; }
+  pre { white-space:pre-wrap; word-break:break-word; font-family:'Poppins',sans-serif !important; }
+  * { max-width:100% !important; }
+</style></head><body>${inner}</body></html>`;
+}
+
+// Construye el bloque citado del correo original para responder/reenviar.
+function buildQuote(m: EmailRow): string {
+  const who = m.from_name || m.from_addr || "remitente";
+  const when = m.date ? new Date(m.date).toLocaleString("es") : "";
+  const src = (m.body_text || m.preview || "").toString().slice(0, 8000);
+  const quoted = src.split(/\r?\n/).map((l) => "> " + l).join("\n");
+  return `\n\n--- El ${when}, ${who} escribió ---\n${quoted}`;
+}
+
+function ComposeMail({
+  mode, email, fullscreen, onBack, onClose, onSent,
+}: { mode: "reply" | "forward"; email: EmailRow; fullscreen: boolean; onBack: () => void; onClose: () => void; onSent: () => void }) {
+  const sendFn = useServerFn(sendMailFrom);
+  const [to, setTo] = useState(mode === "reply" ? email.from_addr || "" : "");
+  const [subject, setSubject] = useState((mode === "reply" ? "Re: " : "Fwd: ") + stripSubjectPrefix(email.subject));
+  const [body, setBody] = useState(buildQuote(email));
+  const [sending, setSending] = useState(false);
+
+  async function send() {
+    if (!to.trim()) return toast.error("Falta el destinatario");
+    if (!subject.trim()) return toast.error("Falta el asunto");
+    setSending(true);
+    try {
+      await sendFn({
+        data: {
+          account: email.account,
+          to: to.trim(),
+          subject: subject.trim(),
+          message: body,
+          inReplyTo: email.message_id || undefined,
+          references: email.message_id || undefined,
+          originalId: email.id,
+        },
+      });
+      toast.success("Correo enviado");
+      onSent();
+    } catch (e) {
+      toast.error("No se pudo enviar", { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onBack} aria-label="Volver"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-soft)] transition hover:text-foreground">
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <span className="text-sm font-semibold text-foreground">{mode === "reply" ? "Responder" : "Reenviar"}</span>
+        <span className="truncate text-xs text-muted-foreground">· desde {email.account}</span>
+        <div className="min-w-0 flex-1" />
+        <Button type="button" size="sm" onClick={send} disabled={sending} className="h-9 shrink-0">
+          {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Enviar
+        </Button>
+        {onClose && (
+          <button type="button" onClick={onClose} aria-label="Cerrar"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+      <div className={cn("space-y-3", fullscreen && "min-h-0 flex-1 overflow-y-auto pr-1")}>
+        <div className="space-y-2 rounded-2xl border border-border bg-card p-4 shadow-[var(--shadow-soft)]">
+          <label className="flex items-center gap-3">
+            <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Para</span>
+            <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="destinatario@correo.com"
+              className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground" />
+          </label>
+          <div className="h-px bg-border" />
+          <label className="flex items-center gap-3">
+            <span className="w-16 shrink-0 text-xs font-medium text-muted-foreground">Asunto</span>
+            <input value={subject} onChange={(e) => setSubject(e.target.value)}
+              className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none" />
+          </label>
+        </div>
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={fullscreen ? 14 : 10}
+          className="w-full rounded-2xl border border-border bg-card p-4 text-sm leading-relaxed text-foreground shadow-[var(--shadow-soft)] outline-none focus:border-primary"
+          placeholder="Escribe tu mensaje…" />
+      </div>
+    </div>
+  );
+}
+
 function EmailReader({
-  m, clientName, fullscreen, onBack, onClose,
-}: { m: EmailRow; clientName: string | null; fullscreen: boolean; onBack: () => void; onClose: () => void }) {
+  m, clientName, fullscreen, onBack, onClose, onReply, onForward, onDelete,
+}: {
+  m: EmailRow; clientName: string | null; fullscreen: boolean;
+  onBack: () => void; onClose: () => void;
+  onReply: () => void; onForward: () => void; onDelete: () => void;
+}) {
   return (
     <div className={cn(fullscreen ? "flex min-h-0 flex-1 flex-col space-y-3" : "space-y-4")}>
       <div className="flex items-center gap-2">
@@ -2685,6 +2821,16 @@ function EmailReader({
           <ArrowLeft className="h-4 w-4" />
         </button>
         <div className="min-w-0 flex-1" />
+        <Button type="button" size="sm" variant="outline" onClick={onReply} className="h-9 shrink-0">
+          <Reply className="h-4 w-4" /> Responder
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={onForward} className="h-9 shrink-0">
+          <Forward className="h-4 w-4" /> Reenviar
+        </Button>
+        <button type="button" onClick={onDelete} aria-label="Borrar correo"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-soft)] transition hover:bg-destructive/10 hover:text-destructive">
+          <Trash2 className="h-4 w-4" />
+        </button>
         {onClose && (
           <button type="button" onClick={onClose} aria-label="Cerrar"
             className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-elevated)] transition hover:text-foreground">
@@ -2710,14 +2856,8 @@ function EmailReader({
           </p>
         </div>
         <div className="overflow-hidden rounded-2xl border border-border bg-white p-1">
-          {m.body_html ? (
-            <iframe title="Contenido del correo" sandbox="" srcDoc={m.body_html}
-              className={cn("w-full rounded-xl border-0 bg-white", fullscreen ? "h-[58vh]" : "h-[46vh]")} />
-          ) : (
-            <pre className="whitespace-pre-wrap break-words p-4 font-sans text-sm leading-relaxed text-foreground">
-              {m.body_text || "(sin contenido)"}
-            </pre>
-          )}
+          <iframe title="Contenido del correo" sandbox="" srcDoc={buildEmailDoc(m)}
+            className={cn("w-full rounded-xl border-0 bg-white", fullscreen ? "h-[58vh]" : "h-[46vh]")} />
         </div>
       </div>
     </div>
@@ -2732,7 +2872,10 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [acct, setAcct] = useState<string>("all");
   const [selected, setSelected] = useState<EmailRow | null>(null);
+  const [compose, setCompose] = useState<{ mode: "reply" | "forward"; email: EmailRow } | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const syncingRef = useRef(false);
+  const deleteFn = useServerFn(deleteEmail);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 300);
@@ -2780,26 +2923,38 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
     qc.invalidateQueries({ queryKey: ["correos-accounts"] });
   };
 
-  async function doSync() {
-    setSyncing(true);
+  async function doSync(auto = false) {
+    if (syncingRef.current) return; // evita solapar sincronizaciones
+    syncingRef.current = true;
+    if (!auto) setSyncing(true);
     try {
       const r: any = await syncFn({ data: {} });
       const nIns = r?.inserted ?? 0;
       if (r?.ok) {
         if (nIns > 0) toast.success(`${nIns} correo${nIns === 1 ? "" : "s"} nuevo${nIns === 1 ? "" : "s"}`, { description: r?.error ? `Aviso — ${r.error}` : undefined });
-        else toast.success("Bandeja al día", { description: r?.error ? `Aviso — ${r.error}` : "No hay correos nuevos." });
+        else if (!auto) toast.success("Bandeja al día", { description: r?.error ? `Aviso — ${r.error}` : "No hay correos nuevos." });
         refresh();
-        // Si alguna cuenta falló pese al éxito parcial, lo marcamos también en rojo.
-        if (r?.error) toast.error("Una cuenta no se pudo sincronizar", { description: r.error });
-      } else {
+        // Si alguna cuenta falló pese al éxito parcial, lo marcamos (solo manual).
+        if (r?.error && !auto) toast.error("Una cuenta no se pudo sincronizar", { description: r.error });
+      } else if (!auto) {
         toast.error("No se pudo sincronizar", { description: r?.error ?? "Error desconocido" });
       }
     } catch (e) {
-      toast.error("No se pudo sincronizar", { description: e instanceof Error ? e.message : undefined });
+      if (!auto) toast.error("No se pudo sincronizar", { description: e instanceof Error ? e.message : undefined });
     } finally {
-      setSyncing(false);
+      syncingRef.current = false;
+      if (!auto) setSyncing(false);
     }
   }
+
+  // Auto-sincronización: al abrir la bandeja y cada 90 s mientras está abierta,
+  // sin avisos (solo salta aviso si llegan correos nuevos). Así no hay que pulsar.
+  useEffect(() => {
+    doSync(true);
+    const id = setInterval(() => doSync(true), 90000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function openEmail(m: EmailRow) {
     setSelected(m);
@@ -2807,6 +2962,32 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
       await supabase.from("emails").update({ seen: true }).eq("id", m.id);
       refresh();
     }
+  }
+
+  async function removeEmail(m: EmailRow) {
+    if (!window.confirm(`¿Borrar este correo de ${m.from_name || m.from_addr || "remitente"}?\n\nSe moverá a la papelera del buzón.`)) return;
+    try {
+      const r: any = await deleteFn({ data: { id: m.id, account: m.account, uid: m.uid } });
+      if (r?.note) toast.message("Correo quitado de la bandeja", { description: r.note });
+      else toast.success("Correo borrado");
+      if (selected?.id === m.id) setSelected(null);
+      refresh();
+    } catch (e) {
+      toast.error("No se pudo borrar", { description: e instanceof Error ? e.message : undefined });
+    }
+  }
+
+  if (compose) {
+    return (
+      <ComposeMail
+        mode={compose.mode}
+        email={compose.email}
+        fullscreen={fullscreen}
+        onBack={() => setCompose(null)}
+        onClose={onClose}
+        onSent={() => { setCompose(null); setSelected(null); refresh(); }}
+      />
+    );
   }
 
   if (selected) {
@@ -2817,6 +2998,9 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
         fullscreen={fullscreen}
         onBack={() => setSelected(null)}
         onClose={onClose}
+        onReply={() => setCompose({ mode: "reply", email: selected })}
+        onForward={() => setCompose({ mode: "forward", email: selected })}
+        onDelete={() => removeEmail(selected)}
       />
     );
   }
@@ -2837,7 +3021,7 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
             onlyUnread ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground")}>
           Sin leer
         </button>
-        <Button type="button" size="sm" onClick={doSync} disabled={syncing} className="h-9 shrink-0">
+        <Button type="button" size="sm" onClick={() => doSync()} disabled={syncing} className="h-9 shrink-0">
           {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Sincronizar
         </Button>
       </PanelToolbar>
@@ -2873,13 +3057,15 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
             {list.map((m) => {
               const name = mailClientName(m);
               return (
-                <button key={m.id} type="button" onClick={() => openEmail(m)}
+                <div key={m.id}
+                  onClick={() => openEmail(m)}
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-soft)]",
-                    m.seen ? "border-border bg-card" : "border-primary/40 bg-primary-soft/40",
-                  )}>
-                  <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full",
-                    m.seen ? "bg-primary-soft/60 text-foreground" : "bg-primary text-primary-foreground")}>
+                    "group flex w-full cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-soft)]",
+                    m.seen && "border-border bg-card",
+                  )}
+                  style={m.seen ? undefined : { background: UNREAD.bg, borderColor: UNREAD.border }}>
+                  <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-full", m.seen && "bg-primary-soft/60 text-foreground")}
+                    style={m.seen ? undefined : { background: UNREAD.accent, color: "#ffffff" }}>
                     <span className="text-sm font-semibold">{(m.from_name || m.from_addr || "?").trim().charAt(0).toUpperCase()}</span>
                   </span>
                   <span className="min-w-0 flex-1">
@@ -2888,7 +3074,8 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
                         {m.from_name || m.from_addr || "(sin remitente)"}
                       </span>
                       {name && (
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                          style={{ background: UNREAD.accentSoft, color: UNREAD.accent }}>
                           <User className="h-3 w-3" />{name}
                         </span>
                       )}
@@ -2896,14 +3083,32 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
                     <span className="block truncate text-[13px] text-foreground">{m.subject || "(sin asunto)"}</span>
                     <span className="block truncate text-xs text-muted-foreground">{m.preview}</span>
                   </span>
+                  {/* Acciones: responder / reenviar / borrar (visibles al pasar o en táctil). */}
+                  <span className="flex shrink-0 items-center gap-1 opacity-70 transition group-hover:opacity-100">
+                    <button type="button" aria-label="Responder" title="Responder"
+                      onClick={(e) => { e.stopPropagation(); setCompose({ mode: "reply", email: m }); }}
+                      className="grid h-8 w-8 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-soft)] transition hover:text-foreground">
+                      <Reply className="h-4 w-4" />
+                    </button>
+                    <button type="button" aria-label="Reenviar" title="Reenviar"
+                      onClick={(e) => { e.stopPropagation(); setCompose({ mode: "forward", email: m }); }}
+                      className="grid h-8 w-8 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-soft)] transition hover:text-foreground">
+                      <Forward className="h-4 w-4" />
+                    </button>
+                    <button type="button" aria-label="Borrar" title="Borrar"
+                      onClick={(e) => { e.stopPropagation(); removeEmail(m); }}
+                      className="grid h-8 w-8 place-items-center rounded-full bg-card text-muted-foreground shadow-[var(--shadow-soft)] transition hover:bg-destructive/10 hover:text-destructive">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </span>
                   <span className="flex shrink-0 flex-col items-end gap-1">
                     <span className="text-[11px] text-muted-foreground">{fmtMailDate(m.date)}</span>
                     {(accounts?.length ?? 0) > 1 && acct === "all" && m.account && (
                       <span className="max-w-[140px] truncate rounded-full bg-muted px-2 py-0.5 text-[9px] text-muted-foreground">{m.account}</span>
                     )}
-                    {!m.seen && <span className="h-2 w-2 rounded-full bg-primary" />}
+                    {!m.seen && <span className="h-2 w-2 rounded-full" style={{ background: UNREAD.accent }} />}
                   </span>
-                </button>
+                </div>
               );
             })}
           </div>

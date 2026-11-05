@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { mailAccounts, type MailAccount } from "@/lib/mail-config";
 
 // Lee por IMAP los buzones de Lorena (puede tener varios: p.ej.
 // hola@ortegacarrion.es y lorenaortega@lorenaortega.es) y guarda los correos en
@@ -26,30 +27,6 @@ function addrList(x: any): { name?: string; address?: string }[] {
   if (Array.isArray(x)) return x.flatMap(addrList);
   if (x.value && Array.isArray(x.value)) return x.value;
   return [];
-}
-
-type MailAccount = { id: string; user: string; pass: string; host: string; port: number };
-
-// Cuentas configuradas en Vercel. La primera reutiliza SMTP_USER/SMTP_PASS (las
-// mismas que usa el envío); la segunda, MAIL2_USER/MAIL2_PASS. Cada una puede
-// fijar su host IMAP (IMAP_HOST / MAIL2_IMAP_HOST); por defecto, IONOS.
-function mailAccounts(): MailAccount[] {
-  const accs: MailAccount[] = [];
-  const defHost = process.env.IMAP_HOST || "imap.ionos.es";
-  const defPort = Number(process.env.IMAP_PORT || 993);
-  if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-    accs.push({ id: process.env.SMTP_USER, user: process.env.SMTP_USER, pass: process.env.SMTP_PASS, host: defHost, port: defPort });
-  }
-  if (process.env.MAIL2_USER && process.env.MAIL2_PASS) {
-    accs.push({
-      id: process.env.MAIL2_USER,
-      user: process.env.MAIL2_USER,
-      pass: process.env.MAIL2_PASS,
-      host: process.env.MAIL2_IMAP_HOST || defHost,
-      port: Number(process.env.MAIL2_IMAP_PORT || defPort),
-    });
-  }
-  return accs;
 }
 
 type AccountResult = {
@@ -78,7 +55,7 @@ async function syncOneAccount(
   const sinceUid: number = lastRow?.uid ?? 0;
 
   const client = new ImapFlow({
-    host: acc.host, port: acc.port, secure: acc.port === 993,
+    host: acc.imapHost, port: acc.imapPort, secure: acc.imapPort === 993,
     auth: { user: acc.user, pass: acc.pass }, logger: false,
     connectionTimeout: 6000, greetingTimeout: 5000, socketTimeout: 15000,
   });
@@ -180,7 +157,7 @@ export const syncInbox = createServerFn({ method: "POST" })
       Promise.race([
         p,
         new Promise<AccountResult>((resolve) =>
-          setTimeout(() => resolve({ account: acc.id, ok: false, stage: "imap", error: `Tiempo de espera agotado (${ms / 1000}s) conectando a ${acc.host}.` }), ms),
+          setTimeout(() => resolve({ account: acc.id, ok: false, stage: "imap", error: `Tiempo de espera agotado (${ms / 1000}s) conectando a ${acc.imapHost}.` }), ms),
         ),
       ]);
 
@@ -224,7 +201,7 @@ export const syncInbox = createServerFn({ method: "POST" })
         updated,
         fetched,
         accounts: results,
-        accountsDetected: accounts.map((a) => ({ id: a.id, host: a.host, port: a.port })),
+        accountsDetected: accounts.map((a) => ({ id: a.id, host: a.imapHost, port: a.imapPort })),
         error: failed.length ? failed.map((r) => `${r.account}: ${r.error}`).join(" · ") : undefined,
       });
     } catch (e: any) {
