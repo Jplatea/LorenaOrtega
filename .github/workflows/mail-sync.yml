@@ -1,0 +1,41 @@
+name: Sincronizar correo (segundo plano)
+
+# Trae los correos de IONOS a la web aunque Lorena no tenga la web abierta.
+# Ejecuta scripts/sync-mail.mjs cada 10 minutos.
+on:
+  schedule:
+    - cron: "*/10 * * * *" # cada 10 minutos
+  workflow_dispatch: {} # permite lanzarlo a mano desde la pestaña Actions
+
+# Evita que se solapen dos ejecuciones.
+concurrency:
+  group: mail-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Instalar dependencias del script
+        run: npm install --no-save imapflow@^2.10.2 mailparser@^3.14.2 @supabase/supabase-js@^2
+
+      - name: Sincronizar buzones
+        env:
+          # --- Config pública (no secreta) ---
+          SUPABASE_URL: https://detwqwwzlzyuboeejngp.supabase.co
+          SMTP_USER: hola@lorenaortega.es
+          MAIL2_USER: lorena@lorenaortega.es
+          IMAP_HOST: imap.ionos.es
+          # --- Secretos (añádelos en Settings → Secrets → Actions) ---
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL2_PASS: ${{ secrets.MAIL2_PASS }}
+        run: node scripts/sync-mail.mjs
