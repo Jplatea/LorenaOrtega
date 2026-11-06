@@ -2708,14 +2708,23 @@ function shortBox(a: string): string {
   return a === "all" ? "Todos" : `${String(a).split("@")[0]}@`;
 }
 
-// Silueta de melocotón para la marca de agua del previsualizador. El color se
-// hereda (currentColor) para poder tintarla casi blanca con el fondo de la sección.
+// Contorno de melocotón (solo línea) para la marca de agua del previsualizador:
+// cuerpo con hendidura superior, surco central y hoja. currentColor para tintarlo.
 function PeachMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
-      <path d="M12 7.3C11.2 5.9 9.6 5.2 8 5.6 5.4 6.3 4 9 4 12c0 4.4 3.6 8 8 8s8-3.6 8-8c0-3-1.4-5.7-4-6.4-1.6-.4-3.2.3-4 1.7Z" />
-      <path d="M12.4 6c.8-1.6 2.6-2.3 4.2-1.8-.6 1.6-2.4 2.4-4.2 1.8Z" opacity="0.9" />
-      <path d="M12 7.6c-.8 3.4-.8 8.4 0 12" fill="none" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" opacity="0.5" />
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinejoin="round"
+      strokeLinecap="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M12 7C11.2 5.4 9.4 4.7 7.7 5.3 5.1 6.2 3.5 8.9 3.5 12c0 4.7 3.8 8.5 8.5 8.5s8.5-3.8 8.5-8.5c0-3.1-1.6-5.8-4.2-6.7C14.6 4.7 12.8 5.4 12 7Z" />
+      <path d="M12.3 6.4c.7-1.7 2.6-2.5 4.3-2-.5 1.7-2.4 2.5-4.3 2Z" />
+      <path d="M12 7.4c-1.2 3.6-1.2 8.8 0 12.4" />
     </svg>
   );
 }
@@ -3035,7 +3044,7 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
     />
   ) : (
     <div className="flex h-full min-h-[280px] items-center justify-center rounded-[10px] border border-border bg-card/40">
-      <PeachMark className="h-44 w-44 text-[#F2DCC9]" />
+      <PeachMark className="h-44 w-44 text-[#E6AE83]" />
     </div>
   );
 
