@@ -2708,9 +2708,9 @@ function shortBox(a: string): string {
   return a === "all" ? "Todos" : `${String(a).split("@")[0]}@`;
 }
 
-// Contorno de melocotón (solo línea) para la marca de agua del previsualizador:
-// cuerpo con hendidura superior, surco central y hoja. currentColor para tintarlo.
-function PeachMark({ className }: { className?: string }) {
+// Contorno de kiwi en rodaja (solo línea) para la marca de agua del
+// previsualizador: piel, pulpa, corazón, rayitos y semillas. currentColor.
+function KiwiMark({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -2722,9 +2722,41 @@ function PeachMark({ className }: { className?: string }) {
       className={className}
       aria-hidden="true"
     >
-      <path d="M12 7C11.2 5.4 9.4 4.7 7.7 5.3 5.1 6.2 3.5 8.9 3.5 12c0 4.7 3.8 8.5 8.5 8.5s8.5-3.8 8.5-8.5c0-3.1-1.6-5.8-4.2-6.7C14.6 4.7 12.8 5.4 12 7Z" />
-      <path d="M12.3 6.4c.7-1.7 2.6-2.5 4.3-2-.5 1.7-2.4 2.5-4.3 2Z" />
-      <path d="M12 7.4c-1.2 3.6-1.2 8.8 0 12.4" />
+      {/* piel y pulpa */}
+      <circle cx="12" cy="12" r="9.3" />
+      <circle cx="12" cy="12" r="7.9" strokeWidth={1} />
+      {/* corazón */}
+      <circle cx="12" cy="12" r="1.5" strokeWidth={1} />
+      {/* rayitos desde el corazón */}
+      <g strokeWidth={0.7}>
+        <line x1="14.3" y1="12" x2="16.3" y2="12" />
+        <line x1="13.99" y1="13.15" x2="15.72" y2="14.15" />
+        <line x1="13.15" y1="13.99" x2="14.15" y2="15.72" />
+        <line x1="12" y1="14.3" x2="12" y2="16.3" />
+        <line x1="10.85" y1="13.99" x2="9.85" y2="15.72" />
+        <line x1="10.01" y1="13.15" x2="8.28" y2="14.15" />
+        <line x1="9.7" y1="12" x2="7.7" y2="12" />
+        <line x1="10.01" y1="10.85" x2="8.28" y2="9.85" />
+        <line x1="10.85" y1="10.01" x2="9.85" y2="8.28" />
+        <line x1="12" y1="9.7" x2="12" y2="7.7" />
+        <line x1="13.15" y1="10.01" x2="14.15" y2="8.28" />
+        <line x1="13.99" y1="10.85" x2="15.72" y2="9.85" />
+      </g>
+      {/* semillas */}
+      <g strokeWidth={0.7}>
+        <circle cx="17.3" cy="12" r="0.5" />
+        <circle cx="16.59" cy="14.65" r="0.5" />
+        <circle cx="14.65" cy="16.59" r="0.5" />
+        <circle cx="12" cy="17.3" r="0.5" />
+        <circle cx="9.35" cy="16.59" r="0.5" />
+        <circle cx="7.41" cy="14.65" r="0.5" />
+        <circle cx="6.7" cy="12" r="0.5" />
+        <circle cx="7.41" cy="9.35" r="0.5" />
+        <circle cx="9.35" cy="7.41" r="0.5" />
+        <circle cx="12" cy="6.7" r="0.5" />
+        <circle cx="14.65" cy="7.41" r="0.5" />
+        <circle cx="16.59" cy="9.35" r="0.5" />
+      </g>
     </svg>
   );
 }
@@ -3044,7 +3076,7 @@ function CorreosPanel({ fullscreen, onClose }: { fullscreen: boolean; onClose: (
     />
   ) : (
     <div className="flex h-full min-h-[280px] items-center justify-center rounded-[10px] border border-border bg-card/40">
-      <PeachMark className="h-44 w-44 text-[#E6AE83]" />
+      <KiwiMark className="h-44 w-44 text-[#86A95C]" />
     </div>
   );
 
